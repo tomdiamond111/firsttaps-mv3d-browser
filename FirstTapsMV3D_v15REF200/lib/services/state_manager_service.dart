@@ -1,0 +1,409 @@
+import 'package:flutter/foundation.dart';
+import '../models/file_model.dart';
+import 'object_manager_service.dart';
+
+/// Service responsible for managing the application state
+/// This centralizes state management to avoid scattered state across components
+class StateManagerService with ChangeNotifier {
+  List<FileModel> _files = [];
+  bool _isLoading = false;
+  FileModel? _selectedFile;
+  bool _showFileInfo = true;
+  bool _useFaceTextures = true; // Default enabled
+  SortCriteria _currentSortCriteria = SortCriteria.name;
+  ArrangementPattern _currentArrangement = ArrangementPattern.grid;
+
+  // Movement/interaction state
+  bool _isMoving = false;
+  FileModel? _movingFile;
+  Map<String, dynamic>?
+  _undoState; // Object deletion state - persists across navigation
+  bool _allObjectsDeleted = false;
+  DateTime? _objectDeletionTime;
+  List<FileModel>? _deletedObjectsBackup;
+  static const int _undoTimeoutMinutes = 30;
+
+  // Getters
+  List<FileModel> get files => List.unmodifiable(_files);
+  bool get isLoading => _isLoading;
+  FileModel? get selectedFile => _selectedFile;
+  bool get showFileInfo => _showFileInfo;
+  bool get useFaceTextures => _useFaceTextures;
+  SortCriteria get currentSortCriteria => _currentSortCriteria;
+  ArrangementPattern get currentArrangement => _currentArrangement;
+  bool get isMoving => _isMoving;
+  FileModel? get movingFile => _movingFile;
+  bool get canUndo => _undoState != null;
+
+  // Object deletion state getters
+  bool get allObjectsDeleted => _allObjectsDeleted;
+  bool get canUndoObjectDeletion =>
+      _allObjectsDeleted &&
+      _objectDeletionTime != null &&
+      DateTime.now().difference(_objectDeletionTime!).inMinutes <
+          _undoTimeoutMinutes;
+  List<FileModel>? get deletedObjectsBackup => _deletedObjectsBackup;
+
+  /// Updates the loading state
+  void setLoading(bool loading) {
+    if (_isLoading != loading) {
+      _isLoading = loading;
+      notifyListeners();
+    }
+  }
+
+  /// Updates the complete file list
+  void updateFiles(List<FileModel> newFiles) {
+    _saveUndoState();
+    _files = List.from(newFiles);
+    notifyListeners();
+  }
+
+  /// Adds multiple files to the collection (used for demo content)
+  void addFiles(List<FileModel> filesToAdd) {
+    _saveUndoState();
+    _files.addAll(filesToAdd);
+    notifyListeners();
+  }
+
+  /// Adds a new file to the collection
+  void addFile(FileModel file) {
+    _saveUndoState();
+
+    // Check if file already exists
+    final existingIndex = _files.indexWhere((f) => f.path == file.path);
+    if (existingIndex >= 0) {
+      _files[existingIndex] = file;
+    } else {
+      // Calculate optimal position for new file
+      final position = ObjectManagerService.calculateOptimalPosition(
+        _files,
+        file,
+      );
+      final updatedFile = FileModel(
+        name: file.name,
+        type: file.type,
+        path: file.path,
+        parentFolder: file.parentFolder,
+        extension: file.extension,
+        x: position['x'],
+        y: position['y'],
+        z: position['z'],
+        thumbnailDataUrl: file.thumbnailDataUrl,
+        height: file.height, // Include all metadata fields
+        fileSize: file.fileSize,
+        lastModified: file.lastModified,
+        created: file.created,
+        mimeType: file.mimeType,
+        isReadable: file.isReadable,
+        isWritable: file.isWritable,
+        // Include EXIF metadata fields
+        cameraMake: file.cameraMake,
+        cameraModel: file.cameraModel,
+        dateTimeOriginal: file.dateTimeOriginal,
+        imageWidth: file.imageWidth,
+        imageHeight: file.imageHeight,
+        aperture: file.aperture,
+        shutterSpeed: file.shutterSpeed,
+        iso: file.iso,
+        focalLength: file.focalLength,
+        flash: file.flash,
+        whiteBalance: file.whiteBalance,
+        orientation: file.orientation,
+        gpsLatitude: file.gpsLatitude,
+        gpsLongitude: file.gpsLongitude,
+        gpsAltitude: file.gpsAltitude,
+        lensModel: file.lensModel,
+        exposureTime: file.exposureTime,
+        fNumber: file.fNumber,
+        photographicSensitivity: file.photographicSensitivity,
+        digitalZoomRatio: file.digitalZoomRatio,
+        sceneCaptureType: file.sceneCaptureType,
+        subjectDistance: file.subjectDistance,
+      );
+      _files.add(updatedFile);
+    }
+    notifyListeners();
+  }
+
+  /// Updates an existing file's position
+  void updateFilePosition(
+    String fileId,
+    double x,
+    double y,
+    double z, {
+    double? rotation, // ROTATION FIX: Add rotation parameter
+    String? furnitureId,
+    int? furnitureSlotIndex,
+    bool updateFurniture = false,
+  }) {
+    final fileIndex = _files.indexWhere((file) => file.path == fileId);
+    if (fileIndex != -1) {
+      _saveUndoState();
+
+      final oldFile = _files[fileIndex];
+
+      // ALWAYS use furniture data from JavaScript - this allows JS to clear furniture
+      // metadata by sending null when objects are moved away from furniture
+      final String? newFurnitureId = furnitureId;
+      final int? newFurnitureSlotIndex = furnitureSlotIndex;
+
+      _files[fileIndex] = FileModel(
+        name: oldFile.name,
+        type: oldFile.type,
+        path: oldFile.path,
+        parentFolder: oldFile.parentFolder,
+        extension: oldFile.extension,
+        x: x,
+        y: y,
+        z: z,
+        rotation:
+            rotation ??
+            oldFile.rotation, // ROTATION FIX: Update rotation or keep existing
+        thumbnailDataUrl: oldFile.thumbnailDataUrl,
+        height: oldFile.height, // Include all metadata fields
+        fileSize: oldFile.fileSize,
+        lastModified: oldFile.lastModified,
+        created: oldFile.created,
+        mimeType: oldFile.mimeType,
+        isReadable: oldFile.isReadable,
+        isWritable: oldFile.isWritable,
+        customDisplayName: oldFile.customDisplayName,
+        furnitureId:
+            newFurnitureId, // Preserve or update furniture seating data
+        furnitureSlotIndex: newFurnitureSlotIndex,
+        // Include EXIF metadata fields
+        cameraMake: oldFile.cameraMake,
+        cameraModel: oldFile.cameraModel,
+        dateTimeOriginal: oldFile.dateTimeOriginal,
+        imageWidth: oldFile.imageWidth,
+        imageHeight: oldFile.imageHeight,
+        aperture: oldFile.aperture,
+        shutterSpeed: oldFile.shutterSpeed,
+        iso: oldFile.iso,
+        focalLength: oldFile.focalLength,
+        flash: oldFile.flash,
+        whiteBalance: oldFile.whiteBalance,
+        orientation: oldFile.orientation,
+        gpsLatitude: oldFile.gpsLatitude,
+        gpsLongitude: oldFile.gpsLongitude,
+        gpsAltitude: oldFile.gpsAltitude,
+        lensModel: oldFile.lensModel,
+        exposureTime: oldFile.exposureTime,
+        fNumber: oldFile.fNumber,
+        photographicSensitivity: oldFile.photographicSensitivity,
+        digitalZoomRatio: oldFile.digitalZoomRatio,
+        sceneCaptureType: oldFile.sceneCaptureType,
+        subjectDistance: oldFile.subjectDistance,
+      );
+      notifyListeners();
+    }
+  }
+
+  /// Removes a file from the collection
+  void removeFile(String fileId) {
+    _saveUndoState();
+    _files.removeWhere((file) => file.path == fileId);
+
+    // Clear selection if the removed file was selected
+    if (_selectedFile?.path == fileId) {
+      _selectedFile = null;
+    }
+
+    notifyListeners();
+  }
+
+  /// Remove multiple files matching a condition
+  /// Returns the number of files removed
+  int removeFilesWhere(bool Function(FileModel) test) {
+    final toRemove = _files.where(test).toList();
+
+    for (final file in toRemove) {
+      _files.remove(file);
+
+      // Clear selection if removed file was selected
+      if (_selectedFile == file) {
+        _selectedFile = null;
+        notifyListeners();
+      }
+    }
+
+    if (toRemove.isNotEmpty) {
+      notifyListeners();
+    }
+
+    return toRemove.length;
+  }
+
+  /// Selects a file
+  void selectFile(FileModel? file) {
+    if (_selectedFile != file) {
+      _selectedFile = file;
+      notifyListeners();
+    }
+  }
+
+  /// Clears the current selection
+  void clearSelection() {
+    selectFile(null);
+  }
+
+  /// Updates display options
+  void updateDisplayOptions({bool? showFileInfo, bool? useFaceTextures}) {
+    bool changed = false;
+
+    if (showFileInfo != null && _showFileInfo != showFileInfo) {
+      _showFileInfo = showFileInfo;
+      changed = true;
+    }
+
+    if (useFaceTextures != null && _useFaceTextures != useFaceTextures) {
+      _useFaceTextures = useFaceTextures;
+      changed = true;
+    }
+
+    if (changed) {
+      notifyListeners();
+    }
+  }
+
+  /// Updates the sorting criteria and re-sorts files
+  void updateSortCriteria(SortCriteria criteria) {
+    if (_currentSortCriteria != criteria) {
+      _saveUndoState();
+      _currentSortCriteria = criteria;
+      _files = ObjectManagerService.sortFiles(_files, criteria);
+      notifyListeners();
+    }
+  }
+
+  /// Updates the arrangement pattern and re-arranges files
+  void updateArrangement(ArrangementPattern pattern) {
+    if (_currentArrangement != pattern) {
+      _saveUndoState();
+      _currentArrangement = pattern;
+      _files = ObjectManagerService.arrangeFiles(_files, pattern);
+      notifyListeners();
+    }
+  }
+
+  /// Starts moving a file
+  void startMoving(FileModel file) {
+    _isMoving = true;
+    _movingFile = file;
+    notifyListeners();
+  }
+
+  /// Stops moving a file
+  void stopMoving() {
+    _isMoving = false;
+    _movingFile = null;
+    notifyListeners();
+  }
+
+  /// Saves the current state for undo functionality
+  void _saveUndoState() {
+    _undoState = {
+      'files': _files.map((f) => f.toJson()).toList(),
+      'sortCriteria': _currentSortCriteria,
+      'arrangement': _currentArrangement,
+    };
+  }
+
+  /// Restores the previous state
+  void undo() {
+    if (_undoState != null) {
+      try {
+        final filesData = _undoState!['files'] as List;
+        _files = filesData.map((data) => FileModel.fromJson(data)).toList();
+        _currentSortCriteria = _undoState!['sortCriteria'] as SortCriteria;
+        _currentArrangement = _undoState!['arrangement'] as ArrangementPattern;
+        _undoState = null;
+        notifyListeners();
+      } catch (e) {
+        print('Error during undo: $e');
+      }
+    }
+  }
+
+  /// Gets display options as a map for JavaScript
+  Map<String, bool> getDisplayOptionsForJS() {
+    return {'showFileInfo': _showFileInfo, 'useFaceTextures': _useFaceTextures};
+  }
+
+  /// Validates if a move operation is valid
+  bool isValidMove(String fileId, double x, double y, double z) {
+    final otherFiles = _files.where((f) => f.path != fileId).toList();
+    return ObjectManagerService.isValidPosition(x, y, z, otherFiles);
+  }
+
+  /// Gets file by ID
+  FileModel? getFileById(String fileId) {
+    try {
+      return _files.firstWhere((file) => file.path == fileId);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Gets files by type
+  List<FileModel> getFilesByType(FileType type) {
+    return _files.where((file) => file.type == type).toList();
+  }
+
+  /// Gets statistics about the files
+  Map<String, dynamic> getFileStatistics() {
+    final stats = <String, dynamic>{};
+    stats['totalCount'] = _files.length;
+
+    // Count by type
+    for (final type in FileType.values) {
+      stats[type.toString()] = _files.where((f) => f.type == type).length;
+    }
+
+    // Count by extension
+    final extensionCounts = <String, int>{};
+    for (final file in _files) {
+      extensionCounts[file.extension] =
+          (extensionCounts[file.extension] ?? 0) + 1;
+    }
+    stats['extensionCounts'] = extensionCounts;
+
+    return stats;
+  }
+
+  /// Clears all files
+  void clearAllFiles() {
+    _saveUndoState();
+    _files.clear();
+    _selectedFile = null;
+    _isMoving = false;
+    _movingFile = null;
+    notifyListeners();
+  }
+
+  /// Deletes all objects (files) in the manager
+  /// This action is persistent and can be undone within a certain time frame
+  void deleteAllObjects() {
+    _saveUndoState();
+
+    // Backup current files for potential restoration
+    _deletedObjectsBackup = List.from(_files);
+
+    _files.clear();
+    _allObjectsDeleted = true;
+    _objectDeletionTime = DateTime.now();
+    notifyListeners();
+  }
+
+  /// Undoes the deletion of all objects, restoring the previous state
+  void undoDeleteAllObjects() {
+    if (canUndoObjectDeletion) {
+      _files = List.from(_deletedObjectsBackup!);
+      _deletedObjectsBackup = null;
+      _allObjectsDeleted = false;
+      _objectDeletionTime = null;
+      notifyListeners();
+    }
+  }
+}

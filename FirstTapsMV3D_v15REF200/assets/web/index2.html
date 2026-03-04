@@ -1,0 +1,273 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <title>WindowWorld</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+        
+        /* Hide system bars in fullscreen mode */
+        :fullscreen {
+            background: #000;
+        }
+        :-webkit-full-screen {
+            background: #000;
+        }
+        :-moz-full-screen {
+            background: #000;
+        }
+        :-ms-fullscreen {
+            background: #000;
+        }
+    </style>
+</head>
+<body>
+    <!-- Use Three.js r149 to avoid deprecation warning while maintaining compatibility -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/camera-controls@1.36.0/dist/camera-controls.min.js"></script>
+    
+    <!-- LZ-String for furniture share compression -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+    
+    <!-- Load protected world/camera initialization logic first -->
+    <script src="./js/threejs_world_init.js"></script>
+    
+    <!-- Demo content bridge functions - Called by JavaScript to add demo content to furniture -->
+    <script>
+        /**
+         * Add a local demo file to furniture
+         * Called by defaultFurnitureSpawner.js during demo content population
+         * @param {string} furnitureId - ID of the furniture object
+         * @param {string} filename - Name of the local file to add
+         * @param {number} slotIndex - Slot index in furniture
+         */
+        window.addDemoFileToFurniture = function(furnitureId, filename, slotIndex) {
+            console.log(`🎵 Bridge: addDemoFileToFurniture(${furnitureId}, ${filename}, ${slotIndex})`);
+            
+            if (window.DemoFileToFurnitureChannel) {
+                window.DemoFileToFurnitureChannel.postMessage(JSON.stringify({
+                    furnitureId: furnitureId,
+                    filename: filename,
+                    slotIndex: slotIndex
+                }));
+            } else {
+                console.error('🎵 DemoFileToFurnitureChannel not available!');
+            }
+        };
+        
+        /**
+         * Add an external link to furniture
+         * Called by defaultFurnitureSpawner.js during demo content population
+         * @param {string} furnitureId - ID of the furniture object
+         * @param {string} url - URL of the link
+         * @param {string} title - Display title for the link
+         * @param {string} type - Link type (youtube, spotify, tiktok, instagram, link)
+         * @param {number} slotIndex - Slot index in furniture
+         */
+        window.addDemoLinkToFurniture = function(furnitureId, url, title, type, slotIndex) {
+            console.log(`🔗 Bridge: addDemoLinkToFurniture(${furnitureId}, ${url}, ${title}, ${type}, ${slotIndex})`);
+            
+            if (window.DemoLinkToFurnitureChannel) {
+                window.DemoLinkToFurnitureChannel.postMessage(JSON.stringify({
+                    furnitureId: furnitureId,
+                    url: url,
+                    title: title,
+                    type: type,
+                    slotIndex: slotIndex
+                }));
+            } else {
+                console.error('🔗 DemoLinkToFurnitureChannel not available!');
+            }
+        };
+    </script>
+    
+    <!-- Load modular split bundle system for cache busting -->
+    <!-- Core Bundle: Always loaded (essential functionality) -->
+    <!-- Note: genreParser, contentDeduplication, and mediaFeedbackManager are bundled in core -->
+    <script src="js/bundle_core_production.js?v=20260301_2145_NOCACHE"></script>
+    
+    <!-- Premium Bundle: Loaded conditionally when premium features needed -->
+    <script>
+        // Premium bundle loader - loads when premium worlds are selected
+        window.loadPremiumBundle = function() {
+            return new Promise((resolve, reject) => {
+                // Check if premium bundle already loaded
+                if (window.premiumBundleLoaded) {
+                    console.log('🌟 Premium bundle already loaded');
+                    resolve();
+                    return;
+                }
+                
+                console.log('🌟 Loading premium bundle...');
+                const script = document.createElement('script');
+                script.src = 'js/bundle_premium_production.js?v=20260301_2145';
+                script.onload = () => {
+                    window.premiumBundleLoaded = true;
+                    console.log('🌟 Premium bundle loaded successfully!');
+                    resolve();
+                };
+                script.onerror = () => {
+                    console.error('🌟 Failed to load premium bundle');
+                    reject(new Error('Premium bundle load failed'));
+                };
+                document.head.appendChild(script);
+            });
+        };
+        
+        // Auto-load premium bundle for premium world types
+        window.ensurePremiumBundle = async function(worldType) {
+            // PRESERVE: Existing hardcoded checks stay exactly the same for compatibility
+            if (worldType === 'dazzle' || worldType === 'forest' || worldType === 'cave' || worldType === 'christmas' || 
+                worldType === 'tropical-paradise' || worldType === 'flower-wonderland') {
+                console.log(`🌟 Premium world "${worldType}" selected, loading premium bundle...`);
+                await window.loadPremiumBundle();
+                return true;
+            }
+            
+            // NEW: Dynamic check using helper system for new worlds
+            if (window.worldTemplateRegistryHelper && 
+                window.worldTemplateRegistryHelper.requiresPremiumBundleCheck(worldType)) {
+                
+                console.log(`🌟 New premium world "${worldType}" selected, loading premium bundle...`);
+                await window.loadPremiumBundle();
+                return true;
+            }
+            
+            // FALLBACK: Legacy check for backward compatibility
+            if (worldType === 'desert-oasis') {
+                console.log(`🌟 Desert Oasis world selected, loading premium bundle...`);
+                await window.loadPremiumBundle();
+                return true;
+            }
+            
+            // ADD: New helper system for additional worlds (without breaking existing)
+            if (window.worldTemplateRegistryHelper && 
+                window.worldTemplateRegistryHelper.isNewTemplate(worldType)) {
+                
+                if (window.worldTemplateRegistryHelper.requiresPremiumBundle(worldType)) {
+                    console.log(`🌟 New premium world "${worldType}" selected, loading premium bundle...`);
+                    await window.loadPremiumBundle();
+                    return true;
+                }
+            }
+            
+            return false;
+        };
+        
+        // Mark core bundle as loaded
+        window.coreBundleLoaded = true;
+        console.log('🎯 Core bundle loaded successfully!');
+    </script>
+    
+    <script>
+        // Check if critical functions are available after bundle loads
+        setTimeout(() => {
+            console.log('Checking global functions...');
+            console.log('resetHomeView:', typeof window.resetHomeView);
+            console.log('emergencyReset:', typeof window.emergencyReset);
+            console.log('createFileObjectsJS:', typeof window.createFileObjectsJS);
+            console.log('window.app:', !!window.app);
+            
+            // Check link name persistence system
+            console.log('ðŸ”— DEBUG: linkNamePersistenceChannel:', !!window.linkNamePersistenceChannel);
+            console.log('ðŸ”— DEBUG: LinkNameManager:', !!window.LinkNameManager);
+            console.log('ðŸ”— DEBUG: LinkNameInitializer:', !!window.LinkNameInitializer);
+            
+            // Test the persistence channel if it exists
+            if (window.linkNamePersistenceChannel) {
+                console.log('ðŸ”— DEBUG: Testing persistence channel...');
+                console.log('ðŸ”— DEBUG: Available methods:', Object.getOwnPropertyNames(window.linkNamePersistenceChannel.__proto__));
+                
+                // Check if Flutter callHandler is available
+                console.log('ðŸ”— DEBUG: window.flutter_inappwebview available:', !!window.flutter_inappwebview);
+                if (window.flutter_inappwebview) {
+                    console.log('ðŸ”— DEBUG: callHandler available:', typeof window.flutter_inappwebview.callHandler);
+                }
+                
+                if (typeof window.linkNamePersistenceChannel.loadAllLinkNames === 'function') {
+                    console.log('ðŸ”— DEBUG: About to call loadAllLinkNames...');
+                    window.linkNamePersistenceChannel.loadAllLinkNames()
+                        .then(names => {
+                            console.log('ðŸ”— DEBUG: Loaded link names:', names);
+                        })
+                        .catch(error => {
+                            console.error('ðŸ”— DEBUG: Error loading link names:', error);
+                        });
+                } else {
+                    console.error('ðŸ”— ERROR: loadAllLinkNames method not found!');
+                }
+            } else {
+                console.error('ðŸ”— ERROR: linkNamePersistenceChannel not available!');
+            }
+            
+            // Check bundle status
+            console.log('Bundle Status:');
+            console.log('  Core Bundle:', window.coreBundleLoaded ? 'Loaded' : 'Not loaded');
+            console.log('  Premium Bundle:', window.premiumBundleLoaded ? 'Loaded' : 'Available on demand');
+            
+            // Check premium features availability
+            if (window.premiumBundleLoaded) {
+                console.log('Premium Features Status:');
+                console.log('  DazzleBedroomWorldTemplate:', !!window.DazzleBedroomWorldTemplate);
+                console.log('  ForestRealmWorldTemplate:', !!window.ForestRealmWorldTemplate);
+                console.log('  ForestMovementIntegration:', !!window.ForestMovementIntegration);
+            }
+            
+            if (window.app) {
+                console.log('App initialized successfully');
+                
+                // DIAGNOSTICS: Check if furniture modules loaded
+                console.log('🪑 DIAGNOSTIC: window.FURNITURE_TYPES exists:', typeof window.FURNITURE_TYPES !== 'undefined');
+                console.log('🎨 DIAGNOSTIC: window.FurnitureIdleAnimationManager exists:', typeof window.FurnitureIdleAnimationManager !== 'undefined');
+                if (typeof window.FurnitureIdleAnimationManager !== 'undefined') {
+                    console.log('✅✅✅ ANIMATION MODULE LOADED SUCCESSFULLY! ✅✅✅');
+                } else {
+                    console.error('❌❌❌ ANIMATION MODULE FAILED TO LOAD! ❌❌❌');
+                }
+            } else {
+                console.error('App failed to initialize');
+            }
+        }, 2000);
+        
+        // Test premium bundle loading function
+        window.testPremiumBundle = async function() {
+            console.log('Testing premium bundle loading...');
+            try {
+                await window.loadPremiumBundle();
+                console.log('Premium bundle test successful!');
+                console.log('  DazzleBedroomWorldTemplate:', !!window.DazzleBedroomWorldTemplate);
+                console.log('  ForestRealmWorldTemplate:', !!window.ForestRealmWorldTemplate);
+                console.log('  ForestMovementIntegration:', !!window.ForestMovementIntegration);
+            } catch (error) {
+                console.error('Premium bundle test failed:', error);
+            }
+        };
+        // Add this function to be called from Flutter
+        window.notifyWorldReady = function() {
+            console.log('🚀🚀🚀 notifyWorldReady() called from Flutter via index2.html');
+            
+            // Notify Flutter that the world is ready (hides splash overlay)
+            if (window.WorldReadyChannel) {
+                console.log('✅ Notifying Flutter via WorldReadyChannel');
+                window.WorldReadyChannel.postMessage('ready');
+            } else {
+                console.warn('⚠️ WorldReadyChannel not available');
+            }
+            
+            // Dispatch event to GlobalPosterManager
+            if (window.globalPosterManager) {
+                console.log('🚀 Dispatching world-ready event to GlobalPosterManager');
+                window.globalPosterManager.dispatchEvent('world-ready', {
+                    source: 'flutter',
+                    timestamp: Date.now()
+                });
+            } else {
+                console.warn('⚠️ GlobalPosterManager not available when notifyWorldReady called');
+            }
+        };
+        console.log('✅ window.notifyWorldReady() function registered in index2.html and ready');
+    </script>
+</body>
+</html>

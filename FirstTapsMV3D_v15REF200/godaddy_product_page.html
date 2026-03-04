@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FirstTaps3D - 3D File Management App | Products</title>
+    <meta name="description" content="FirstTaps3D - Revolutionary 3D file management and organization app. Download now for iOS and Android. Premium features available.">
+    
+    <!-- JSON-LD Structured Data for Google Merchant Center -->
+    <script type="application/ld+json">
+    {
+        "@context": "https://schema.org/",
+        "@type": "Product",
+        "name": "FirstTaps3D App",
+        "description": "Revolutionary 3D file management and organization application for mobile devices",
+        "brand": {
+            "@type": "Brand",
+            "name": "FirstTaps"
+        },
+        "category": "Mobile Application",
+        "image": [
+            "https://your-domain.com/images/firsttaps3d-screenshot1.jpg",
+            "https://your-domain.com/images/firsttaps3d-screenshot2.jpg"
+        ],
+        "offers": [
+            {
+                "@type": "Offer",
+                "name": "FirstTaps3D Free Version",
+                "price": "0",
+                "priceCurrency": "USD",
+                "availability": "https://schema.org/InStock",
+                "url": "https://play.google.com/store/apps/details?id=com.firsttaps.firsttaps3D",
+                "seller": {
+                    "@type": "Organization",
+                    "name": "FirstTaps"
+                }
+            },
+            {
+                "@type": "Offer",
+                "name": "FirstTaps3D Premium Subscription",
+                "price": "9.99",
+                "priceCurrency": "USD",
+                "priceSpecification": {
+                    "@type": "RecurringPaymentFrequency",
+                    "frequency": "monthly"
+                },
+                "availability": "https://schema.org/InStock",
+                "url": "https://play.google.com/store/apps/details?id=com.firsttaps.firsttaps3D",
+                "seller": {
+                    "@type": "Organization",
+                    "name": "FirstTaps"
+                }
+            }
+        ],
+        "applicationCategory": "ProductivityApplication",
+        "operatingSystem": "Android, iOS",
+        "aggregateRating": {
+            "@type": "AggregateRating",
+            "ratingValue": "4.5",
+            "ratingCount": "150"
+        }
+    }
+    </script>
+
+    <style>
+        /* CSS for GoDaddy Website Builder */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        /* Navigation Styles */
+        .navbar {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 15px 0;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            box-shadow: 0 2px 20px rgba(0,0,0,0.1);
+        }
+        
+        .nav-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: #4f46e5;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .nav-menu {
+            display: flex;
+            list-style: none;
+            gap: 30px;
+            align-items: center;
+        }
+        
+        .nav-link {
+            text-decoration: none;
+            color: #475569;
+            font-weight: 500;
+            transition: color 0.3s ease;
+            padding: 8px 0;
+        }
+        
+        .nav-link:hover {
+            color: #4f46e5;
+            text-decoration: none;
+        }
+        
+        .nav-cta {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 25px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .nav-cta:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(79, 70, 229, 0.4);
+            color: white;
+            text-decoration: none;
+        }
+        
+        .mobile-menu-toggle {
+            display: none;
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            color: #475569;
+            cursor: pointer;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            margin-top: 80px; /* Account for fixed navbar */
+        }
+        
+        .product-showcase {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.1);
+            overflow: hidden;
+            margin: 40px 0;
+        }
+        
+        .hero-section {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            color: white;
+            padding: 60px 40px;
+            text-align: center;
+        }
+        
+        .app-icon {
+            width: 120px;
+            height: 120px;
+            background: white;
+            border-radius: 25px;
+            margin: 0 auto 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 60px;
+            color: #4f46e5;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+        
+        .hero-section h1 {
+            font-size: 3.5rem;
+            font-weight: 800;
+            margin-bottom: 15px;
+            background: linear-gradient(45deg, #fff, #e0e7ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .hero-section .tagline {
+            font-size: 1.3rem;
+            opacity: 0.9;
+            margin-bottom: 40px;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .pricing-section {
+            padding: 60px 40px;
+            background: #f8fafc;
+        }
+        
+        .pricing-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        
+        .pricing-card {
+            background: white;
+            border-radius: 15px;
+            padding: 40px 30px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            border: 2px solid transparent;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .pricing-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.15);
+        }
+        
+        .pricing-card.premium {
+            border-color: #4f46e5;
+            background: linear-gradient(135deg, #f8faff 0%, #f1f5ff 100%);
+        }
+        
+        .premium-badge {
+            position: absolute;
+            top: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #4f46e5;
+            color: white;
+            padding: 8px 20px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+        
+        .plan-name {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            color: #1e293b;
+        }
+        
+        .plan-price {
+            font-size: 3rem;
+            font-weight: 800;
+            color: #4f46e5;
+            margin-bottom: 10px;
+        }
+        
+        .plan-period {
+            color: #64748b;
+            margin-bottom: 30px;
+        }
+        
+        .features-list {
+            list-style: none;
+            margin-bottom: 40px;
+        }
+        
+        .features-list li {
+            padding: 8px 0;
+            color: #475569;
+            position: relative;
+            padding-left: 25px;
+        }
+        
+        .features-list li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #10b981;
+            font-weight: bold;
+        }
+        
+        .cta-button {
+            display: inline-block;
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            color: white;
+            text-decoration: none;
+            padding: 15px 30px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 1.1rem;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(79, 70, 229, 0.3);
+        }
+        
+        .cta-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(79, 70, 229, 0.4);
+            text-decoration: none;
+            color: white;
+        }
+        
+        .cta-button.secondary {
+            background: white;
+            color: #4f46e5;
+            border: 2px solid #4f46e5;
+            box-shadow: none;
+        }
+        
+        .cta-button.secondary:hover {
+            background: #4f46e5;
+            color: white;
+        }
+        
+        .features-section {
+            padding: 60px 40px;
+            background: white;
+        }
+        
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 40px;
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        
+        .feature-card {
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .feature-icon {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            border-radius: 20px;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 35px;
+            color: white;
+        }
+        
+        .feature-card h3 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            margin-bottom: 15px;
+            color: #1e293b;
+        }
+        
+        .feature-card p {
+            color: #64748b;
+            line-height: 1.6;
+        }
+        
+        .download-section {
+            background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+            color: white;
+            padding: 60px 40px;
+            text-align: center;
+        }
+        
+        .download-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-top: 30px;
+        }
+        
+        .store-badge {
+            height: 60px;
+            transition: transform 0.3s ease;
+        }
+        
+        .store-badge:hover {
+            transform: scale(1.05);
+        }
+        
+        .section-title {
+            text-align: center;
+            font-size: 2.5rem;
+            font-weight: 800;
+            margin-bottom: 50px;
+            color: #1e293b;
+        }
+        
+        @media (max-width: 768px) {
+            .hero-section {
+                padding: 40px 20px;
+            }
+            
+            .hero-section h1 {
+                font-size: 2.5rem;
+            }
+            
+            .pricing-section,
+            .features-section,
+            .download-section {
+                padding: 40px 20px;
+            }
+            
+            .container {
+                padding: 10px;
+                margin-top: 70px;
+            }
+            
+            .download-buttons {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .nav-menu {
+                display: none;
+                position: absolute;
+                top: 100%;
+                left: 0;
+                right: 0;
+                background: white;
+                flex-direction: column;
+                padding: 20px;
+                box-shadow: 0 5px 20px rgba(0,0,0,0.1);
+            }
+            
+            .nav-menu.active {
+                display: flex;
+            }
+            
+            .mobile-menu-toggle {
+                display: block;
+            }
+            
+            .nav-container {
+                position: relative;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar">
+        <div class="nav-container">
+            <a href="/" class="logo">
+                🎯 FirstTaps
+            </a>
+            <ul class="nav-menu" id="nav-menu">
+                <li><a href="#home" class="nav-link">Home</a></li>
+                <li><a href="#products" class="nav-link">Products</a></li>
+                <li><a href="#features" class="nav-link">Features</a></li>
+                <li><a href="#pricing" class="nav-link">Pricing</a></li>
+                <li><a href="#download" class="nav-link">Download</a></li>
+                <li><a href="/contact" class="nav-link">Contact</a></li>
+                <li><a href="https://play.google.com/store/apps/details?id=com.firsttaps.firsttaps3D" class="nav-cta">Get App</a></li>
+            </ul>
+            <button class="mobile-menu-toggle" id="mobile-menu-toggle">
+                ☰
+            </button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="product-showcase">
+            <!-- Hero Section -->
+            <section class="hero-section" id="home">
+                <div class="app-icon">🎯</div>
+                <h1>FirstTaps3D</h1>
+                <p class="tagline">Revolutionary 3D file management and organization for your mobile device. Transform how you interact with your digital files in stunning 3D environments.</p>
+            </section>
+
+            <!-- Pricing Section -->
+            <section class="pricing-section" id="pricing">
+                <h2 class="section-title">Choose Your Plan</h2>
+                <div class="pricing-grid">
+                    <!-- Free Plan -->
+                    <div class="pricing-card">
+                        <h3 class="plan-name">Free Version</h3>
+                        <div class="plan-price">$0</div>
+                        <p class="plan-period">Forever free</p>
+                        <ul class="features-list">
+                            <li>Basic 3D file viewing</li>
+                            <li>Core file organization</li>
+                            <li>Standard world templates</li>
+                            <li>Basic sharing features</li>
+                            <li>Community support</li>
+                        </ul>
+                        <a href="https://play.google.com/store/apps/details?id=com.firsttaps.firsttaps3D" class="cta-button secondary">Download Free</a>
+                    </div>
+
+                    <!-- Premium Plan -->
+                    <div class="pricing-card premium">
+                        <div class="premium-badge">Most Popular</div>
+                        <h3 class="plan-name">Premium</h3>
+                        <div class="plan-price">$9.99</div>
+                        <p class="plan-period">per month</p>
+                        <ul class="features-list">
+                            <li>Advanced 3D environments</li>
+                            <li>Premium world templates</li>
+                            <li>Advanced file organization</li>
+                            <li>Cloud synchronization</li>
+                            <li>Priority support</li>
+                            <li>Exclusive features</li>
+                            <li>Ad-free experience</li>
+                        </ul>
+                        <a href="https://play.google.com/store/apps/details?id=com.firsttaps.firsttaps3D" class="cta-button">Get Premium</a>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Features Section -->
+            <section class="features-section" id="features">
+                <h2 class="section-title">Why Choose FirstTaps3D?</h2>
+                <div class="features-grid">
+                    <div class="feature-card">
+                        <div class="feature-icon">🌐</div>
+                        <h3>3D File Management</h3>
+                        <p>Experience your files in stunning 3D environments. Navigate through your documents, photos, and media like never before.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">📱</div>
+                        <h3>Mobile Optimized</h3>
+                        <p>Designed specifically for mobile devices with intuitive touch controls and responsive interface.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">⚡</div>
+                        <h3>Fast & Efficient</h3>
+                        <p>Lightning-fast file access and organization with powerful search and sorting capabilities.</p>
+                    </div>
+                    <div class="feature-card">
+                        <div class="feature-icon">🎨</div>
+                        <h3>Beautiful Worlds</h3>
+                        <p>Choose from multiple stunning 3D world templates to customize your file management experience.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Download Section -->
+            <section class="download-section" id="download">
+                <h2>Download FirstTaps3D Today</h2>
+                <p>Available for iOS and Android devices. Start your 3D file management journey now!</p>
+                <div class="download-buttons">
+                    <a href="https://play.google.com/store/apps/details?id=com.firsttaps.firsttaps3D" target="_blank">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/7/78/Google_Play_Store_badge_EN.svg" alt="Get it on Google Play" class="store-badge">
+                    </a>
+                    <a href="https://apps.apple.com/app/firsttaps3d/id123456789" target="_blank">
+                        <img src="https://upload.wikimedia.org/wikipedia/commons/3/3c/Download_on_the_App_Store_Badge.svg" alt="Download on the App Store" class="store-badge">
+                    </a>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- JavaScript for mobile menu -->
+    <script>
+        // Mobile menu toggle
+        const mobileMenuToggle = document.getElementById('mobile-menu-toggle');
+        const navMenu = document.getElementById('nav-menu');
+
+        mobileMenuToggle.addEventListener('click', () => {
+            navMenu.classList.toggle('active');
+        });
+
+        // Smooth scrolling for anchor links
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const target = document.querySelector(this.getAttribute('href'));
+                if (target) {
+                    target.scrollIntoView({
+                        behavior: 'smooth',
+                        block: 'start'
+                    });
+                }
+                // Close mobile menu if open
+                navMenu.classList.remove('active');
+            });
+        });
+
+        // Close mobile menu when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.navbar')) {
+                navMenu.classList.remove('active');
+            }
+        });
+    </script>
+</body>
+</html>

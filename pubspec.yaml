@@ -1,0 +1,83 @@
+name: firsttaps_mv3d_browser
+description: "FirstTaps MV3D Web - 3D Link Organizer for Desktop Browsers"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  
+  # Core dependencies (web-compatible)
+  http: ^1.2.2                    # API calls for content recommendations
+  uuid: ^4.5.1                    # Generate unique IDs for objects
+  shared_preferences: ^2.5.3      # Web: uses localStorage
+  provider: ^6.0.5                # State management
+  path: ^1.9.0                    # Path utilities
+  url_launcher: ^6.3.2            # Open links in new tabs
+  mime: ^2.0.0                    # MIME type detection for link metadata
+  image: ^4.1.7                   # Image processing for thumbnails
+  share_plus: ^12.0.1             # Share furniture with friends (web-compatible)
+  
+  # UI
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  # The "flutter_lints" package below contains a set of recommended lints to
+  # encourage good coding practices. The lint set provided by the package is
+  # activated in the `analysis_options.yaml` file located at the root of your
+  # package. See that file for information about deactivating specific lint
+  # rules and activating additional ones.
+  flutter_lints: ^5.0.0
+
+# For information on the generic Dart part of this file, see the
+# following page: https://dart.dev/tools/pub/pubspec
+
+# The following section is specific to Flutter packages.
+flutter:
+
+  # The following line ensures that the Material Icons font is
+  # included with your application, so that you can use the icons in
+  # the material Icons class.
+  uses-material-design: true
+
+  # Assets for browser version (no local media files)
+  assets:
+    - assets/images/
+    - assets/web/
+    - assets/web/index2.html
+    - assets/web/js/
+    - assets/web/bundles/
+    - assets/web/themes/
+
+  # An image asset can refer to one or more resolution-specific "variants", see
+  # https://flutter.dev/to/resolution-aware-images
+
+  # For details regarding adding assets from package dependencies, see
+  # https://flutter.dev/to/asset-from-package
+
+  # To add custom fonts to your application, add a fonts section here,
+  # in this "flutter" section. Each entry in this list should have a
+  # "family" key with the font family name, and a "fonts" key with a
+  # list giving the asset and other descriptors for the font. For
+  # example:
+  # fonts:
+  #   - family: Schyler
+  #     fonts:
+  #       - asset: fonts/Schyler-Regular.ttf
+  #       - asset: fonts/Schyler-Italic.ttf
+  #         style: italic
+  #   - family: Trajan Pro
+  #     fonts:
+  #       - asset: fonts/TrajanPro.ttf
+  #       - asset: fonts/TrajanPro_Bold.ttf
+  #         weight: 700
+  #
+  # For details regarding fonts from package dependencies,
+  # see https://flutter.dev/to/font-from-package
