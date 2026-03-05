@@ -43,3 +43,12 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Environment variables with API keys
+.env.local
+
+# Reference/backup directories
+FirstTapsMV3D_v15GISTREF/
+FirstTapsMV3D_v15REF200/
+*REF*/
+*GIST*/
