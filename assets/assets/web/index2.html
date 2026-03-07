@@ -1,0 +1,692 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <title>WindowWorld</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <style>
+        body { margin: 0; overflow: hidden; }
+        canvas { display: block; }
+        
+        /* Hide system bars in fullscreen mode */
+        :fullscreen {
+            background: #000;
+        }
+        :-webkit-full-screen {
+            background: #000;
+        }
+        :-moz-full-screen {
+            background: #000;
+        }
+        :-ms-fullscreen {
+            background: #000;
+        }
+        
+        /* Mini Floating Action Button (matches Flutter MiniFloatingActionButtonWidget) */
+        .mini-fab {
+            position: fixed;
+            width: 48px;
+            height: 48px;
+            border-radius: 24px;
+            background: rgba(0, 0, 0, 0.7);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            z-index: 1000;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        .mini-fab:hover {
+            background: rgba(66, 66, 66, 0.85);
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+        
+        .mini-fab:active {
+            transform: scale(0.95);
+        }
+        
+        .mini-fab.active {
+            background: rgba(33, 150, 243, 0.8);
+            border-color: rgba(33, 150, 243, 1);
+        }
+        
+        /* Hide duplicate SVG entity score button that appears momentarily */
+        #svgEntityScoreDisplay {
+            display: none !important;
+        }
+        
+        /* Score button (bottom left - matches Flutter green pill style) */
+        /* Positioned above AdSense banner (90px + 24px margin) */
+        #scoreBtn {
+            position: fixed;
+            bottom: 114px;
+            left: 24px;
+            background: rgba(76, 175, 80, 0.9);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 20px;
+            color: white;
+            padding: 8px 12px;
+            cursor: pointer;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 1000;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        #scoreBtn:hover {
+            background: rgba(76, 175, 80, 1);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+        
+        /* Home button (bottom right - matches Flutter white circular style) */
+        /* Positioned above AdSense banner (90px + 24px margin) */
+        #homeBtn {
+            position: fixed;
+            bottom: 114px;
+            right: 24px;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: white;
+            border: none;
+            color: black;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            z-index: 1000;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+        }
+        
+        #homeBtn:hover {
+            background: rgba(255, 255, 255, 0.95);
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+        }
+        
+        #homeBtn:active {
+            transform: scale(0.95);
+        }
+        
+        /* Search container (top right - matches Flutter search field) */
+        #searchContainer {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        #searchToggle {
+            width: 40px;
+            height: 40px;
+            border-radius: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            transition: all 0.2s ease;
+        }
+        
+        #searchToggle.platform-mode {
+            background: rgba(244, 67, 54, 0.8);
+        }
+        
+        #searchField {
+            width: 200px;
+            height: 40px;
+            background: rgba(0, 0, 0, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 20px;
+            color: white;
+            padding: 0 16px;
+            font-size: 14px;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            transition: all 0.2s ease;
+        }
+        
+        #searchField.active {
+            border-color: rgba(33, 150, 243, 1);
+        }
+        
+        #searchField::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+        
+        #searchField:focus {
+            outline: none;
+            border-color: rgba(33, 150, 243, 1);
+        }
+        
+        /* AdSense Banner (bottom center - fixed position) */
+        #adBanner {
+            position: fixed;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 728px;
+            height: 90px;
+            background: rgba(30, 30, 30, 0.95);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            z-index: 999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.3);
+        }
+        
+        /* Mobile-responsive: Hide ad banner on small screens or show smaller banner */
+        @media (max-width: 768px) {
+            #adBanner {
+                width: 320px;
+                height: 50px;
+            }
+            
+            /* Adjust button positions for smaller ad banner (50px + 20px margin) */
+            #scoreBtn, #homeBtn {
+                bottom: 70px;
+            }
+        }
+    </style>
+    
+    <!-- Google AdSense Script -->
+    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1963756646352121"
+         crossorigin="anonymous"></script>
+</head>
+<body>
+    <!-- Top Left Buttons -->
+    <button class="mini-fab" id="optionsBtn" style="top: 10px; left: 10px;" title="Options">☰</button>
+    <button class="mini-fab" id="exploreBtn" style="top: 10px; left: 58px;" title="Explore Mode">🚶</button>
+    <button class="mini-fab" id="worldBtn" style="top: 10px; left: 106px;" title="Switch World">🌍</button>
+    <button class="mini-fab" id="listBtn" style="top: 58px; left: 10px;" title="2D List View">📋</button>
+    
+    <!-- Top Right Buttons and Search -->
+    <!-- Furniture/Add button positioned left of search toggle -->
+    <button class="mini-fab" id="addBtn" style="top: 10px; right: 306px;" title="Add Content">➕</button>
+    <div id="searchContainer">
+        <button id="searchToggle" title="Toggle Search Mode: World/Platform">🔍</button>
+        <input type="text" id="searchField" placeholder="Search objects..." />
+    </div>
+    
+    <!-- Bottom Left: Score Button -->
+    <button id="scoreBtn">Lv1 | 🏆 0 pts</button>
+    
+    <!-- Bottom Right: Home Button -->
+    <button id="homeBtn" title="Reset Home View">🏠</button>
+    
+    <!-- Google AdSense Banner (Bottom Center) -->
+    <div id="adBanner">
+        <!-- MV3D Browser Bottom Banner -->
+        <ins class="adsbygoogle"
+             style="display:block"
+             data-ad-client="ca-pub-1963756646352121"
+             data-ad-slot="7390821965"
+             data-ad-format="auto"
+             data-full-width-responsive="true"></ins>
+        <script>
+             (adsbygoogle = window.adsbygoogle || []).push({});
+        </script>
+    </div>
+    
+    <!-- Use Three.js r149 to avoid deprecation warning while maintaining compatibility -->
+    <script src="https://cdn.jsdelivr.net/npm/three@0.149.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/camera-controls@1.36.0/dist/camera-controls.min.js"></script>
+    
+    <!-- LZ-String for furniture share compression -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lz-string/1.4.4/lz-string.min.js"></script>
+    
+    <!-- Browser Bridge: Provides Flutter WebView compatibility for browser -->
+    <script src="./js/browserBridge.js"></script>
+    
+    <!-- Load protected world/camera initialization logic first -->
+    <script src="./js/threejs_world_init.js"></script>
+    
+    <!-- Demo content bridge functions - Called by JavaScript to add demo content to furniture -->
+    <script>
+        /**
+         * Add a local demo file to furniture
+         * Called by defaultFurnitureSpawner.js during demo content population
+         * @param {string} furnitureId - ID of the furniture object
+         * @param {string} filename - Name of the local file to add
+         * @param {number} slotIndex - Slot index in furniture
+         */
+        window.addDemoFileToFurniture = function(furnitureId, filename, slotIndex) {
+            console.log(`🎵 Bridge: addDemoFileToFurniture(${furnitureId}, ${filename}, ${slotIndex})`);
+            
+            if (window.DemoFileToFurnitureChannel) {
+                window.DemoFileToFurnitureChannel.postMessage(JSON.stringify({
+                    furnitureId: furnitureId,
+                    filename: filename,
+                    slotIndex: slotIndex
+                }));
+            } else {
+                console.error('🎵 DemoFileToFurnitureChannel not available!');
+            }
+        };
+        
+        /**
+         * Add an external link to furniture
+         * Called by defaultFurnitureSpawner.js during demo content population
+         * @param {string} furnitureId - ID of the furniture object
+         * @param {string} url - URL of the link
+         * @param {string} title - Display title for the link
+         * @param {string} type - Link type (youtube, spotify, tiktok, instagram, link)
+         * @param {number} slotIndex - Slot index in furniture
+         */
+        window.addDemoLinkToFurniture = function(furnitureId, url, title, type, slotIndex) {
+            console.log(`🔗 Bridge: addDemoLinkToFurniture(${furnitureId}, ${url}, ${title}, ${type}, ${slotIndex})`);
+            
+            if (window.DemoLinkToFurnitureChannel) {
+                window.DemoLinkToFurnitureChannel.postMessage(JSON.stringify({
+                    furnitureId: furnitureId,
+                    url: url,
+                    title: title,
+                    type: type,
+                    slotIndex: slotIndex
+                }));
+            } else {
+                console.error('🔗 DemoLinkToFurnitureChannel not available!');
+            }
+        };
+    </script>
+    
+    <!-- Load modular split bundle system for cache busting -->
+    <!-- Core Bundle: Always loaded (essential functionality) -->
+    <script src="js/bundle_core_production.js?v=20260306_2043_NOCACHE"></script>
+    
+    <!-- Premium Bundle: Loaded conditionally when premium features needed -->
+    <script>
+        // Premium bundle loader - loads when premium worlds are selected
+        window.loadPremiumBundle = function() {
+            return new Promise((resolve, reject) => {
+                // Check if premium bundle already loaded
+                if (window.premiumBundleLoaded) {
+                    console.log('🌟 Premium bundle already loaded');
+                    resolve();
+                    return;
+                }
+                
+                console.log('🌟 Loading premium bundle...');
+                const script = document.createElement('script');
+                script.src = 'js/bundle_premium_production.js?v=20260306_2043';
+                script.onload = () => {
+                    window.premiumBundleLoaded = true;
+                    console.log('🌟 Premium bundle loaded successfully!');
+                    resolve();
+                };
+                script.onerror = () => {
+                    console.error('🌟 Failed to load premium bundle');
+                    reject(new Error('Premium bundle load failed'));
+                };
+                document.head.appendChild(script);
+            });
+        };
+        
+        // Auto-load premium bundle for premium world types
+        window.ensurePremiumBundle = async function(worldType) {
+            // PRESERVE: Existing hardcoded checks stay exactly the same for compatibility
+            if (worldType === 'dazzle' || worldType === 'forest' || worldType === 'cave' || worldType === 'christmas' || 
+                worldType === 'tropical-paradise' || worldType === 'flower-wonderland') {
+                console.log(`🌟 Premium world "${worldType}" selected, loading premium bundle...`);
+                await window.loadPremiumBundle();
+                return true;
+            }
+            
+            // NEW: Dynamic check using helper system for new worlds
+            if (window.worldTemplateRegistryHelper && 
+                window.worldTemplateRegistryHelper.requiresPremiumBundleCheck(worldType)) {
+                
+                console.log(`🌟 New premium world "${worldType}" selected, loading premium bundle...`);
+                await window.loadPremiumBundle();
+                return true;
+            }
+            
+            // FALLBACK: Legacy check for backward compatibility
+            if (worldType === 'desert-oasis') {
+                console.log(`🌟 Desert Oasis world selected, loading premium bundle...`);
+                await window.loadPremiumBundle();
+                return true;
+            }
+            
+            // ADD: New helper system for additional worlds (without breaking existing)
+            if (window.worldTemplateRegistryHelper && 
+                window.worldTemplateRegistryHelper.isNewTemplate(worldType)) {
+                
+                if (window.worldTemplateRegistryHelper.requiresPremiumBundle(worldType)) {
+                    console.log(`🌟 New premium world "${worldType}" selected, loading premium bundle...`);
+                    await window.loadPremiumBundle();
+                    return true;
+                }
+            }
+            
+            return false;
+        };
+        
+        // Mark core bundle as loaded
+        window.coreBundleLoaded = true;
+        console.log('🎯 Core bundle loaded successfully!');
+    </script>
+    
+    <script>
+        // Check if critical functions are available after bundle loads
+        setTimeout(() => {
+            console.log('Checking global functions...');
+            console.log('resetHomeView:', typeof window.resetHomeView);
+            console.log('emergencyReset:', typeof window.emergencyReset);
+            console.log('createFileObjectsJS:', typeof window.createFileObjectsJS);
+            console.log('window.app:', !!window.app);
+            
+            // Check link name persistence system
+            console.log('ðŸ”— DEBUG: linkNamePersistenceChannel:', !!window.linkNamePersistenceChannel);
+            console.log('ðŸ”— DEBUG: LinkNameManager:', !!window.LinkNameManager);
+            console.log('ðŸ”— DEBUG: LinkNameInitializer:', !!window.LinkNameInitializer);
+            
+            // Test the persistence channel if it exists
+            if (window.linkNamePersistenceChannel) {
+                console.log('ðŸ”— DEBUG: Testing persistence channel...');
+                console.log('ðŸ”— DEBUG: Available methods:', Object.getOwnPropertyNames(window.linkNamePersistenceChannel.__proto__));
+                
+                // Check if Flutter callHandler is available
+                console.log('ðŸ”— DEBUG: window.flutter_inappwebview available:', !!window.flutter_inappwebview);
+                if (window.flutter_inappwebview) {
+                    console.log('ðŸ”— DEBUG: callHandler available:', typeof window.flutter_inappwebview.callHandler);
+                }
+                
+                if (typeof window.linkNamePersistenceChannel.loadAllLinkNames === 'function') {
+                    console.log('ðŸ”— DEBUG: About to call loadAllLinkNames...');
+                    window.linkNamePersistenceChannel.loadAllLinkNames()
+                        .then(names => {
+                            console.log('ðŸ”— DEBUG: Loaded link names:', names);
+                        })
+                        .catch(error => {
+                            console.error('ðŸ”— DEBUG: Error loading link names:', error);
+                        });
+                } else {
+                    console.error('ðŸ”— ERROR: loadAllLinkNames method not found!');
+                }
+            } else {
+                console.error('ðŸ”— ERROR: linkNamePersistenceChannel not available!');
+            }
+            
+            // Check bundle status
+            console.log('Bundle Status:');
+            console.log('  Core Bundle:', window.coreBundleLoaded ? 'Loaded' : 'Not loaded');
+            console.log('  Premium Bundle:', window.premiumBundleLoaded ? 'Loaded' : 'Available on demand');
+            
+            // Check premium features availability
+            if (window.premiumBundleLoaded) {
+                console.log('Premium Features Status:');
+                console.log('  DazzleBedroomWorldTemplate:', !!window.DazzleBedroomWorldTemplate);
+                console.log('  ForestRealmWorldTemplate:', !!window.ForestRealmWorldTemplate);
+                console.log('  ForestMovementIntegration:', !!window.ForestMovementIntegration);
+            }
+            
+            if (window.app) {
+                console.log('App initialized successfully');
+                
+                // DIAGNOSTICS: Check if furniture modules loaded
+                console.log('🪑 DIAGNOSTIC: window.FURNITURE_TYPES exists:', typeof window.FURNITURE_TYPES !== 'undefined');
+                console.log('🎨 DIAGNOSTIC: window.FurnitureIdleAnimationManager exists:', typeof window.FurnitureIdleAnimationManager !== 'undefined');
+                if (typeof window.FurnitureIdleAnimationManager !== 'undefined') {
+                    console.log('✅✅✅ ANIMATION MODULE LOADED SUCCESSFULLY! ✅✅✅');
+                } else {
+                    console.error('❌❌❌ ANIMATION MODULE FAILED TO LOAD! ❌❌❌');
+                }
+            } else {
+                console.error('App failed to initialize');
+            }
+        }, 2000);
+        
+        // Test premium bundle loading function
+        window.testPremiumBundle = async function() {
+            console.log('Testing premium bundle loading...');
+            try {
+                await window.loadPremiumBundle();
+                console.log('Premium bundle test successful!');
+                console.log('  DazzleBedroomWorldTemplate:', !!window.DazzleBedroomWorldTemplate);
+                console.log('  ForestRealmWorldTemplate:', !!window.ForestRealmWorldTemplate);
+                console.log('  ForestMovementIntegration:', !!window.ForestMovementIntegration);
+            } catch (error) {
+                console.error('Premium bundle test failed:', error);
+            }
+        };
+        // Add this function to be called from Flutter
+        window.notifyWorldReady = function() {
+            console.log('🚀🚀🚀 notifyWorldReady() called from Flutter via index2.html');
+            
+            // Notify Flutter that the world is ready (hides splash overlay)
+            if (window.WorldReadyChannel) {
+                console.log('✅ Notifying Flutter via WorldReadyChannel');
+                window.WorldReadyChannel.postMessage('ready');
+            } else {
+                console.warn('⚠️ WorldReadyChannel not available');
+            }
+            
+            // Dispatch event to GlobalPosterManager
+            if (window.globalPosterManager) {
+                console.log('🚀 Dispatching world-ready event to GlobalPosterManager');
+                window.globalPosterManager.dispatchEvent('world-ready', {
+                    source: 'flutter',
+                    timestamp: Date.now()
+                });
+            } else {
+                console.warn('⚠️ GlobalPosterManager not available when notifyWorldReady called');
+            }
+            
+            // INITIALIZE GAMING SYSTEMS (entities and treasure boxes)
+            if (window.app) {
+                console.log('🎮 Initializing background gaming systems...');
+                
+                // Initialize SVG Entity Manager for interactive entities
+                if (typeof window.initializeSVGEntities === 'function' && !window.app.svgEntityManager) {
+                    try {
+                        window.app.svgEntityManager = window.initializeSVGEntities(window.app);
+                        if (window.app.svgEntityManager) {
+                            console.log('🎮 SVG Entity Manager initialized');
+                        } else {
+                            console.warn('🎮 SVG Entity Manager initialization returned null');
+                        }
+                    } catch (e) {
+                        console.error('🎮 Error initializing SVG Entity Manager:', e);
+                    }
+                }
+                
+                // Initialize Treasure Box Manager
+                if (typeof window.initializeTreasureBoxes === 'function' && !window.app.treasureBoxManager) {
+                    try {
+                        window.app.treasureBoxManager = window.initializeTreasureBoxes(window.app);
+                        if (window.app.treasureBoxManager) {
+                            console.log('💎 Treasure Box Manager initialized');
+                        } else {
+                            console.warn('💎 Treasure Box Manager initialization returned null');
+                        }
+                    } catch (e) {
+                        console.error('💎 Error initializing Treasure Box Manager:', e);
+                    }
+                }
+            } else {
+                console.warn('🎮 window.app not available for gaming initialization');
+            }
+        };
+        console.log('✅ window.notifyWorldReady() function registered in index2.html and ready');
+    </script>
+    
+    <!-- UI Button Event Handlers -->
+    <script>
+        // Wait for DOM to be ready
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🎮 Setting up UI button handlers...');
+            
+            // State variables
+            let exploreMode = false;
+            let searchMode = 'world'; // 'world' or 'platform'
+            let currentLevel = 1;
+            let currentScore = 0;
+            
+            // Options Menu (Top Left)
+            document.getElementById('optionsBtn')?.addEventListener('click', function() {
+                console.log('🎮 Options button clicked');
+                if (window.browserBridge) {
+                    window.browserBridge.sendToFlutter({
+                        type: 'optionsMenu',
+                        action: 'show'
+                    });
+                }
+            });
+            
+            // Explore Mode Toggle (Top Left)
+            document.getElementById('exploreBtn')?.addEventListener('click', function() {
+                exploreMode = !exploreMode;
+                this.classList.toggle('active', exploreMode);
+                console.log('🎮 Explore mode:', exploreMode ? 'ON' : 'OFF');
+                
+                if (window.browserBridge) {
+                    window.browserBridge.sendToFlutter({
+                        type: 'exploreMode',
+                        enabled: exploreMode
+                    });
+                }
+                
+                // TODO: Integrate with JavaScript camera controls
+            });
+            
+            // World Switch Button (Top Left)
+            document.getElementById('worldBtn')?.addEventListener('click', function() {
+                console.log('🎮 World switch button clicked');
+                // Use browser-native world selection dialog
+                if (window.app && window.app.browserMenuHandler) {
+                    window.app.browserMenuHandler.showWorldSelectionDialog();
+                } else {
+                    console.error('Browser menu handler not available yet - try again in a moment');
+                }
+            });
+            
+            // 2D List View (Top Left, below explore)
+            document.getElementById('listBtn')?.addEventListener('click', function() {
+                console.log('🎮 List view button clicked');
+                if (window.browserBridge) {
+                    window.browserBridge.sendToFlutter({
+                        type: 'showListView',
+                        action: 'navigate'
+                    });
+                }
+            });
+            
+            // Add Content/Furniture (Top Right)
+            document.getElementById('addBtn')?.addEventListener('click', function() {
+                console.log('🎮 Add Content button clicked');
+                // Use browser-native menu system instead of Flutter bridge
+                if (window.app && window.app.browserMenuHandler) {
+                    window.app.browserMenuHandler.showAddContentMenu();
+                } else {
+                    console.error('Browser menu handler not available yet - try again in a moment');
+                }
+            });
+            
+            // Search Toggle (Top Right - switches between world/platform search)
+            const searchToggle = document.getElementById('searchToggle');
+            const searchField = document.getElementById('searchField');
+            
+            searchToggle?.addEventListener('click', function() {
+                searchMode = searchMode === 'world' ? 'platform' : 'world';
+                this.classList.toggle('platform-mode', searchMode === 'platform');
+                searchField.placeholder = searchMode === 'world' ? 'Search objects...' : 'Search platforms...';
+                this.textContent = searchMode === 'world' ? '🔍' : '🔊';
+                console.log('🎮 Search mode toggled to:', searchMode);
+            });
+            
+            // Search Field (Top Right)
+            searchField?.addEventListener('focus', function() {
+                this.classList.add('active');
+            });
+            
+            searchField?.addEventListener('blur', function() {
+                this.classList.remove('active');
+            });
+            
+            searchField?.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && this.value.trim()) {
+                    const query = this.value.trim();
+                    console.log('🔍 Searching:', query, 'in', searchMode);
+                    
+                    if (searchMode === 'platform') {
+                        // Navigate to music search screen
+                        if (window.browserBridge) {
+                            window.browserBridge.sendToFlutter({
+                                type: 'showSearch',
+                                action: 'navigate',
+                                query: query
+                            });
+                        }
+                    } else {
+                        // Search in 3D world
+                        // TODO: Implement world object search
+                        console.log('World search not yet implemented');
+                    }
+                    
+                    this.value = '';
+                    this.blur();
+                }
+            });
+            
+            // Score Button (Bottom Left)
+            document.getElementById('scoreBtn')?.addEventListener('click', function() {
+                console.log('🎮 Score button clicked');
+                // Show browser-native scoreboard
+                if (window.simpleMobileScoreboard) {
+                    window.simpleMobileScoreboard.showScoreboard();
+                } else if (window.entityUIManager && window.entityUIManager.scoreBillboard) {
+                    window.entityUIManager.scoreBillboard.showScoreboard();
+                } else {
+                    console.error('Scoreboard not available yet - try again in a moment');
+                }
+            });
+            
+            // Home Button (Bottom Right)
+            document.getElementById('homeBtn')?.addEventListener('click', function() {
+                console.log('🎮 Home button clicked - resetting camera');
+                if (window.browserBridge) {
+                    window.browserBridge.sendToFlutter({
+                        type: 'resetHomeView'
+                    });
+                }
+                
+                // Also call JavaScript camera reset
+                if (window.app && window.app.cameraControls) {
+                    window.app.cameraControls.resetCamera();
+                    console.log('✅ Camera reset via JavaScript');
+                }
+            });
+            
+            // Function to update score display (can be called from Flutter)
+            window.updateScore = function(level, score) {
+                currentLevel = level;
+                currentScore = score;
+                const scoreBtn = document.getElementById('scoreBtn');
+                if (scoreBtn) {
+                    scoreBtn.textContent = `Lv${level} | 🏆 ${score} pts`;
+                }
+            };
+            
+            console.log('✅ UI button handlers registered');
+        });
+    </script>
+</body>
+</html>
