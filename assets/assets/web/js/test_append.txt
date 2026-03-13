@@ -1,0 +1,11 @@
+﻿
+// MANUAL TEST ADDITION
+/**
+ * FOREST MOVEMENT MENU MODULE
+ * Provides menu-based upward movement capability for Forest Realm world
+ * Menu options: Move, Move Up, Delete, Cancel
+ */
+
+(function() {
+    'use strict';
+

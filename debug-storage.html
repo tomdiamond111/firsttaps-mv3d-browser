@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>MV3D Storage Debug Tool</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        h1 {
+            color: #228B22;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .storage-item {
+            padding: 12px;
+            margin: 8px 0;
+            background: #f9f9f9;
+            border-left: 4px solid #228B22;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            word-break: break-all;
+        }
+        .key {
+            font-weight: bold;
+            color: #228B22;
+        }
+        .value {
+            color: #666;
+            margin-left: 20px;
+        }
+        button {
+            background: #228B22;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #1a6b1a;
+        }
+        button.danger {
+            background: #dc3545;
+        }
+        button.danger:hover {
+            background: #c82333;
+        }
+        .section {
+            margin: 30px 0;
+            padding: 20px;
+            background: #f9f9f9;
+            border-radius: 8px;
+        }
+        .highlight {
+            background: #fff3cd;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        kbd {
+            background: #f4f4f4;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            box-shadow: 0 1px 0 rgba(0,0,0,0.2);
+            padding: 2px 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+        }
+        #status {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 6px;
+            display: none;
+        }
+        #status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        #status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="section">
+            <h2>🔧 MV3D Storage Debug Tool</h2>
+            <p id="auto-clear-message" style="display: none; background: #d1ecf1; color: #0c5460; padding: 15px; border-radius: 6px; border: 1px solid #bee5eb; margin-bottom: 20px;">
+                <strong>📢 Update Required:</strong> A new version is available that requires clearing cached data. Click "Reset First-Install" below to complete the update.
+            </p>
+        </div>
+        
+        <div class="section">
+            <h2>Current LocalStorage Keys</h2>
+            <div id="storage-list"></div>
+            <button onclick="refreshList()">🔄 Refresh List</button>
+        </div>
+
+        <div class="section">
+            <h2>Reset First-Install Experience</h2>
+            <p>Click the button below to clear the keys that control first-launch dialogs and service worker cache:</p>
+            <ul>
+                <li><span class="highlight">flutter.firstLaunch_shown</span> - Welcome instructions dialog</li>
+                <li><span class="highlight">flutter.music_prefs_first_shown</span> - Music preferences dialog</li>
+                <li><span class="highlight">mv3d_default_furniture_created</span> - Default furniture marker</li>
+                <li><span class="highlight">Service Worker Cache</span> - Cached app state</li>
+            </ul>
+            <button onclick="resetFirstInstall()">🔄 Reset First-Install</button>
+            <button onclick="clearAllStorage()" class="danger">⚠️ Clear ALL Storage</button>
+            <div id="status"></div>
+        </div>
+
+        <div class="section">
+            <h2>Instructions</h2>
+            <ol>
+                <li>Click <strong>"Reset First-Install"</strong> to clear onboarding flags and service worker</li>
+                <li>The page will automatically force-reload with cache bypass</li>
+                <li>You should see the welcome dialog and music preferences dialog</li>
+            </ol>
+            <p><strong>Alternative Method:</strong> If the button doesn't work, manually do:</p>
+            <ol>
+                <li>Open DevTools (F12)</li>
+                <li>Go to Application tab → Storage → Clear site data</li>
+                <li>Press <kbd>Ctrl+Shift+R</kbd> (or <kbd>Cmd+Shift+R</kbd> on Mac) for hard refresh</li>
+            </ol>
+            <p><strong>Note:</strong> If "Reset First-Install" doesn't work, try "Clear ALL Storage" (this will remove everything including your content).</p>
+        </div>
+    </div>
+
+    <script>
+        function refreshList() {
+            const container = document.getElementById('storage-list');
+            container.innerHTML = '';
+            
+            if (localStorage.length === 0) {
+                container.innerHTML = '<p style="color: #999; font-style: italic;">localStorage is empty</p>';
+                return;
+            }
+
+            // Get all keys and sort them
+            const keys = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                keys.push(localStorage.key(i));
+            }
+            keys.sort();
+
+            // Display each key-value pair
+            keys.forEach(key => {
+                const value = localStorage.getItem(key);
+                const div = document.createElement('div');
+                div.className = 'storage-item';
+                
+                // Truncate long values
+                let displayValue = value;
+                if (displayValue.length > 100) {
+                    displayValue = displayValue.substring(0, 100) + '... (' + value.length + ' chars)';
+                }
+                
+                div.innerHTML = `
+                    <div class="key">${escapeHtml(key)}</div>
+                    <div class="value">${escapeHtml(displayValue)}</div>
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function showStatus(message, type = 'info') {
+            const status = document.getElementById('status');
+            status.textContent = message;
+            status.className = type;
+            status.style.display = 'block';
+            
+            setTimeout(() => {
+                status.style.display = 'none';
+            }, 3000);
+        }
+
+        async function resetFirstInstall() {
+            console.log('🔄 Resetting first-install...');
+            
+            // Clear the specific keys that control first-launch
+            const keysToRemove = [
+                'flutter.firstLaunch_shown',
+                'flutter.music_prefs_first_shown',
+                'mv3d_default_furniture_created',
+                'mv3d_furniture_data'
+            ];
+            
+            keysToRemove.forEach(key => {
+                const hadKey = localStorage.getItem(key) !== null;
+                localStorage.removeItem(key);
+                console.log(`  ${hadKey ? '✅' : '⏭️'} Removed: ${key}`);
+            });
+            
+            // Clear service worker cache
+            await clearServiceWorkerAndCaches();
+            
+            showStatus('✅ First-install keys cleared! Reloading page...', 'success');
+            
+            // Force hard reload after short delay
+            setTimeout(() => {
+                window.location.href = window.location.href + '?nocache=' + Date.now();
+            }, 1500);
+        }
+
+        async function clearServiceWorkerAndCaches() {
+            console.log('🔧 Clearing service worker and caches...');
+            
+            // Unregister all service workers
+            if ('serviceWorker' in navigator) {
+                const registrations = await navigator.serviceWorker.getRegistrations();
+                for (let registration of registrations) {
+                    console.log('  Unregistering service worker:', registration.scope);
+                    await registration.unregister();
+                }
+            }
+            
+            // Clear all caches
+            if ('caches' in window) {
+                const cacheNames = await caches.keys();
+                for (let cacheName of cacheNames) {
+                    console.log('  Deleting cache:', cacheName);
+                    await caches.delete(cacheName);
+                }
+            }
+            
+            console.log('✅ Service workers and caches cleared');
+        }
+
+        async function clearAllStorage() {
+            if (!confirm('⚠️ This will DELETE ALL stored data including your content!\n\nAre you sure?')) {
+                return;
+            }
+            
+            console.log('⚠️ Clearing ALL storage...');
+            localStorage.clear();
+            sessionStorage.clear();
+            
+            // Also try to clear IndexedDB
+            if (window.indexedDB && indexedDB.databases) {
+                indexedDB.databases().then(dbs => {
+                    dbs.forEach(db => {
+                        console.log(`  Deleting database: ${db.name}`);
+                        indexedDB.deleteDatabase(db.name);
+                    });
+                });
+            }
+            
+            // Clear service worker and caches
+            await clearServiceWorkerAndCaches();
+            
+            showStatus('✅ All storage cleared! Reloading page...', 'success');
+            
+            setTimeout(() => {
+                window.location.href = window.location.href + '?nocache=' + Date.now();
+            }, 1500);
+        }
+
+        // Load storage list on page load
+        refreshList();
+        
+        // Auto-refresh every 3 seconds
+        setInterval(refreshList, 3000);
+        
+        // Check for autoclear URL parameter
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('autoclear') === 'update') {
+            const message = document.getElementById('auto-clear-message');
+            if (message) {
+                message.style.display = 'block';
+                console.log('📢 Auto-clear message displayed for update');
+            }
+        }
+    </script>
+</body>
+</html>
