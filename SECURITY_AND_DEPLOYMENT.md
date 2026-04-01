@@ -44,7 +44,7 @@ YouTube/Vimeo APIs
 | `/api/youtube/music-videos` | Music category videos | YouTube Data API v3 |
 | `/api/youtube/music-audio` | Music search results | YouTube Data API v3 |
 | `/api/vimeo/staff-picks` | Vimeo staff picks | Vimeo API |
-| `/api/paste` | Furniture sharing (Gist) | Cloudflare KV |
+| `/api/paste` | Furniture sharing | Cloudflare KV (no auth) |
 
 ---
 
@@ -59,11 +59,16 @@ YouTube/Vimeo APIs
 4. Create API key (select "API key" under "Create Credentials")
 5. **Recommended**: Add HTTP referrer restriction: `https://mv3d.firsttaps.com/*`
 
-**Vimeo Access Token:**
+**Vimeo Access Token (Optional):**
 1. Go to https://developer.vimeo.com/apps
 2. Create new app or select existing
 3. Generate personal access token
 4. Required scopes: `public` and `video_files`
+
+**GitHub Token (NOT NEEDED for browser app):**
+- Browser app uses Cloudflare Worker `/api/paste` endpoint
+- No GitHub token required for furniture sharing
+- Only needed if you're building the mobile/desktop Flutter app
 
 ### 2. Store Keys in Cloudflare Worker Secrets
 
