@@ -401,14 +401,11 @@ class URLManager {
                 furnitureSlotIndex: userData.slotIndex || null
             };
 
-            // CRITICAL: ALWAYS send to Dart unless explicitly in restoration mode
-            // isDemoContent objects MUST be persisted (they're real content, just auto-generated)
-            // DEFAULT LINKS (like firsttaps.com) should be persisted even during first install
+            // CRITICAL: Send ALL objects to Dart for persistence unless in restoration mode
+            // Demo content now persists to avoid re-fetching metadata after reload
+            // Objects only change if user explicitly moves/deletes or refreshes furniture
             if (window._worldRestorationInProgress === true) {
-                // Skip during restoration
-            } else if (window._firstInstallInProgress === true && userData.isDemoContent === true) {
-                // Skip ONLY demo content during first install (furniture objects)
-                // But allow default links like firsttaps.com to be persisted
+                // Skip during restoration to avoid duplicate notifications
             } else if (!window.LinkObjectAddedChannel) {
                 console.error('❌ [NOTIFY] LinkObjectAddedChannel not available, link will NOT persist!');
                 console.error('❌ [NOTIFY] Object ID:', linkFileData.id);

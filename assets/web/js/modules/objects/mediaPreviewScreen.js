@@ -186,10 +186,28 @@ window.MediaPreviewScreenClass = class MediaPreviewScreen {
                 action: () => this.toggleMute()
             },
             {
+                id: 'like',
+                label: '👍 Like',
+                x: 100,
+                y: 1325,
+                width: 475,
+                height: 90,
+                action: () => this.recordFeedback('liked')
+            },
+            {
+                id: 'dislike',
+                label: '👎 Dislike',
+                x: 625,
+                y: 1325,
+                width: 475,
+                height: 90,
+                action: () => this.recordFeedback('disliked')
+            },
+            {
                 id: 'open_native',
                 label: '🚀 Open in App',
                 x: 100,
-                y: 1350,
+                y: 1440,
                 width: 1000,
                 height: 100,
                 action: () => this.openInNativeApp()
@@ -198,7 +216,7 @@ window.MediaPreviewScreenClass = class MediaPreviewScreen {
                 id: 'close',
                 label: '✕ Close',
                 x: 100,
-                y: 1450,
+                y: 1545,
                 width: 1000,
                 height: 100,
                 action: () => this.hide()
@@ -447,6 +465,98 @@ window.MediaPreviewScreenClass = class MediaPreviewScreen {
     }
     
     /**
+     * Record user feedback (like/dislike) for this content
+     * @param {string} sentiment - 'liked' or 'disliked'
+     */
+    recordFeedback(sentiment) {
+        if (!window.mediaFeedback) {
+            console.warn('⚠️ MediaFeedbackManager not available');
+            return;
+        }
+        
+        const url = this.mediaData.url || this.mediaData.path;
+        if (!url) {
+            console.warn('⚠️ No URL available for feedback');
+            return;
+        }
+        
+        // Determine platform from URL
+        let platform = 'unknown';
+        if (url.includes('youtube.com') || url.includes('youtu.be')) platform = 'youtube';
+        else if (url.includes('spotify.com')) platform = 'spotify';
+        else if (url.includes('vimeo.com')) platform = 'vimeo';
+        else if (url.includes('soundcloud.com')) platform = 'soundcloud';
+        else if (url.includes('deezer.com')) platform = 'deezer';
+        else if (url.includes('tiktok.com')) platform = 'tiktok';
+        else if (url.includes('instagram.com')) platform = 'instagram';
+        else if (url.includes('dailymotion.com')) platform = 'dailymotion';
+        
+        // Extract rich metadata for preference learning
+        let channelTitle = null;
+        let language = null;
+        let tags = null;
+        let title = this.mediaData.name || this.mediaData.fileName || 'Untitled';
+        
+        // Parse metadata JSON if available (from recommendationService)
+        if (this.mediaData.metadata) {
+            try {
+                const parsedMetadata = typeof this.mediaData.metadata === 'string' 
+                    ? JSON.parse(this.mediaData.metadata) 
+                    : this.mediaData.metadata;
+                channelTitle = parsedMetadata.channelTitle;
+                language = parsedMetadata.language;
+                tags = parsedMetadata.tags;
+                console.log('📊 [FEEDBACK] Extracted metadata from link object:', {channelTitle, language, tags: tags?.length});
+            } catch (e) {
+                console.warn('⚠️ Failed to parse metadata JSON:', e);
+            }
+        }
+        
+        // Fallback: Extract from platform-specific metadata
+        if (!channelTitle && platform === 'youtube') {
+            const youtubeMetadata = this.mediaData.youtubeMetadata || this.mediaData.userData?.youtubeMetadata;
+            if (youtubeMetadata) {
+                channelTitle = youtubeMetadata.author_name || youtubeMetadata.channel_name;
+                console.log('📊 [FEEDBACK] Extracted channel from YouTube metadata:', channelTitle);
+            }
+        } else if (!channelTitle && platform === 'vimeo') {
+            const vimeoMetadata = this.mediaData.vimeoMetadata || this.mediaData.userData?.vimeoMetadata;
+            if (vimeoMetadata) {
+                channelTitle = vimeoMetadata.author_name;
+                console.log('📊 [FEEDBACK] Extracted channel from Vimeo metadata:', channelTitle);
+            }
+        }
+        
+        // Record feedback with complete metadata
+        window.mediaFeedback.recordFeedback(url, sentiment, {
+            platform: platform,
+            title: title,
+            channelTitle: channelTitle,
+            language: language,
+            tags: tags,
+            genre: null // Genre extraction could be added later
+        });
+        
+        // Show visual feedback
+        const emoji = sentiment === 'liked' ? '👍' : '👎';
+        console.log(`${emoji} Feedback recorded: ${sentiment} for ${platform}`);
+        
+        // Update button label temporarily
+        const button = this.buttons.find(b => b.id === sentiment.replace('d', ''));
+        if (button) {
+            const originalLabel = button.label;
+            button.label = `${emoji} Saved!`;
+            this.render();
+            
+            // Restore original label after 1 second
+            setTimeout(() => {
+                button.label = originalLabel;
+                this.render();
+            }, 1000);
+        }
+    }
+    
+    /**
      * Create HTML overlay for actual media playback
      */
     createMediaOverlay() {
@@ -611,13 +721,49 @@ window.MediaPreviewScreenClass = class MediaPreviewScreen {
             this.mediaOverlay.removeChild(this.mediaOverlay.firstChild);
         }
         
+        // Extract metadata for title and artist display
+        let trackTitle = this.mediaData.name || this.mediaData.fileName || 'Media';
+        let artistName = '';
+        
+        // Try to get metadata from various platform-specific sources
+        if (this.mediaType === 'youtube') {
+            // YouTube: Check for metadata or parse from name
+            const youtubeMetadata = this.mediaData.youtubeMetadata || this.mediaData.userData?.youtubeMetadata;
+            trackTitle = youtubeMetadata?.title || this.mediaData.name || 'YouTube Video';
+            artistName = youtubeMetadata?.author_name || youtubeMetadata?.channel_name || '';
+        } else if (this.mediaType === 'spotify') {
+            // Spotify: Check spotifyMetadata
+            const spotifyMetadata = this.mediaData.spotifyMetadata || 
+                                   this.mediaData.userData?.spotifyMetadata ||
+                                   this.mediaData.linkData?.spotifyMetadata;
+            trackTitle = spotifyMetadata?.title || this.mediaData.name || 'Spotify Track';
+            artistName = spotifyMetadata?.artist_name || spotifyMetadata?.artist || '';
+        } else if (this.mediaType === 'soundcloud') {
+            // SoundCloud: Check soundcloudMetadata
+            const soundcloudMetadata = this.mediaData.soundcloudMetadata || this.mediaData.userData?.soundcloudMetadata;
+            trackTitle = soundcloudMetadata?.title || this.mediaData.name || 'SoundCloud Track';
+            artistName = soundcloudMetadata?.author_name || '';
+        } else if (this.mediaType === 'tiktok') {
+            // TikTok: Check tiktokMetadata
+            const tiktokMetadata = this.mediaData.tiktokMetadata || this.mediaData.userData?.tiktokMetadata;
+            artistName = tiktokMetadata?.author_name || '';
+        } else if (this.mediaType === 'vimeo') {
+            // Vimeo: Check vimeoMetadata
+            const vimeoMetadata = this.mediaData.vimeoMetadata || this.mediaData.userData?.vimeoMetadata;
+            trackTitle = vimeoMetadata?.title || this.mediaData.name || 'Vimeo Video';
+            artistName = vimeoMetadata?.author_name || '';
+        } else if (this.mediaType === 'audio' || this.mediaType === 'video') {
+            // Local files: Check audio/video metadata
+            artistName = this.mediaData.artist || this.mediaData.metadata?.artist || '';
+        }
+        
         // Header with close and fullscreen buttons
         const header = document.createElement('div');
         header.id = 'mediaControlsHeader';
         header.style.cssText = 'margin-bottom: 15px; color: white; font-family: Arial; transition: opacity 0.3s; pointer-events: auto;';
         header.innerHTML = `
             <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                <div style="display: flex; gap: 8px; align-items: center;">
+                <div style="display: flex; gap: 8px; align-items: center; flex: 1; min-width: 0;">
                     <button id="closeMediaBtn" style="
                         background: #e74c3c;
                         color: white;
@@ -628,8 +774,12 @@ window.MediaPreviewScreenClass = class MediaPreviewScreen {
                         font-size: 11px;
                         pointer-events: auto;
                         touch-action: manipulation;
+                        flex-shrink: 0;
                     ">✕ Close</button>
-                    <h3 style="margin: 0; font-size: 18px; flex-shrink: 0;">${this.mediaData.name || this.mediaData.fileName || 'Media'}</h3>
+                    <div style="flex: 1; min-width: 0;">
+                        <h3 style="margin: 0; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${trackTitle}</h3>
+                        ${artistName ? `<div style="font-size: 13px; color: rgba(255,255,255,0.7); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${artistName}</div>` : ''}
+                    </div>
                 </div>
                 <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                     ${this.mediaType === 'youtube' ? `<button id="viewOnYouTubeBtn" style="
@@ -748,7 +898,7 @@ window.MediaPreviewScreenClass = class MediaPreviewScreen {
                         padding: 6px 12px;
                         cursor: pointer;
                         font-size: 11px;
-                        pointer-events: auto;
+                        ponter-events: auto;
                         touch-action: manipulation;
                     ">⊟ Minimize</button>` : ''}
                     <button id="fullscreenMediaBtn" style="
@@ -1365,54 +1515,65 @@ window.MediaPreviewScreenClass = class MediaPreviewScreen {
                 // Store the Vimeo URL for the button
                 this.currentVimeoUrl = url;
                 
-                // Fetch thumbnail from Vimeo oEmbed API via Flutter bridge (bypasses CORS)
-                try {
-                    // Use Flutter bridge to get metadata (bypasses CORS)
-                    const metadata = await new Promise((resolve) => {
-                        console.log('🎬 [FLUTTER BRIDGE] Requesting Vimeo metadata for preview...');
-                        
-                        if (!window.VimeoMetadataChannel) {
-                            console.warn('⚠️ VimeoMetadataChannel not available');
-                            resolve(null);
-                            return;
-                        }
-                        
-                        window.vimeoMetadataCallback = (data) => {
-                            console.log('🎬 [FLUTTER BRIDGE] Received metadata:', data);
-                            delete window.vimeoMetadataCallback;
-                            resolve(data);
-                        };
-                        
-                        const requestData = {
-                            action: 'getVimeoMetadata',
-                            url: url
-                        };
-                        
-                        try {
-                            window.VimeoMetadataChannel.postMessage(JSON.stringify(requestData));
-                        } catch (error) {
-                            console.error('❌ Error requesting metadata:', error);
-                            delete window.vimeoMetadataCallback;
-                            resolve(null);
-                        }
-                        
-                        setTimeout(() => {
-                            if (window.vimeoMetadataCallback) {
-                                console.warn('⏱️ Metadata request timed out');
+                // First check if metadata is already attached to the link object
+                const existingMetadata = this.mediaData.vimeoMetadata || this.mediaData.userData?.vimeoMetadata;
+                let metadata = null;
+
+                if (existingMetadata) {
+                    console.log('🎬 Using existing Vimeo metadata from link object:', existingMetadata);
+                    metadata = existingMetadata;
+                } else {
+                    // Fetch thumbnail from Vimeo oEmbed API via Flutter bridge (bypasses CORS)
+                    try {
+                        // Use Flutter bridge to get metadata (bypasses CORS)
+                        metadata = await new Promise((resolve) => {
+                            console.log('🎬 [FLUTTER BRIDGE] Requesting Vimeo metadata for preview...');
+                            
+                            if (!window.VimeoMetadataChannel) {
+                                console.warn('⚠️ VimeoMetadataChannel not available');
+                                resolve(null);
+                                return;
+                            }
+                            
+                            window.vimeoMetadataCallback = (data) => {
+                                console.log('🎬 [FLUTTER BRIDGE] Received metadata:', data);
+                                delete window.vimeoMetadataCallback;
+                                resolve(data);
+                            };
+                            
+                            const requestData = {
+                                action: 'getVimeoMetadata',
+                                url: url
+                            };
+                            
+                            try {
+                                window.VimeoMetadataChannel.postMessage(JSON.stringify(requestData));
+                            } catch (error) {
+                                console.error('❌ Error requesting metadata:', error);
                                 delete window.vimeoMetadataCallback;
                                 resolve(null);
                             }
-                        }, 5000);
-                    });
-                    
-                    // Use metadata or fallback
-                    const data = metadata || {};
-                    
+                            
+                            setTimeout(() => {
+                                if (window.vimeoMetadataCallback) {
+                                    console.warn('⏱️ Metadata request timed out');
+                                    delete window.vimeoMetadataCallback;
+                                    resolve(null);
+                                }
+                            }, 5000);
+                        });
+                    } catch (error) {
+                        console.error('🎵 Failed to fetch Vimeo metadata:', error);
+                    }
+                }
+                
+                // Use metadata if available
+                if (metadata) {
                     // Update header with actual video title from metadata
                     const headerTitle = this.mediaOverlay.querySelector('h3');
-                    if (headerTitle && (data.title || metadata?.title)) {
-                        const title = data.title || metadata?.title;
-                        const author = data.author_name || data.author || metadata?.author;
+                    if (headerTitle && metadata.title) {
+                        const title = metadata.title;
+                        const author = metadata.author_name || metadata.author;
                         headerTitle.textContent = author ? 
                             `${author} - ${title}` : 
                             title;
@@ -1427,7 +1588,7 @@ window.MediaPreviewScreenClass = class MediaPreviewScreen {
                     
                     // Create thumbnail image
                     const thumbnail = document.createElement('img');
-                    const thumbnailUrl = data.thumbnail_url || data.thumbnailUrl || metadata?.thumbnailUrl || metadata?.thumbnail_url || 'https://via.placeholder.com/640x360?text=Vimeo';
+                    const thumbnailUrl = metadata.thumbnail_url || metadata.thumbnailUrl || 'https://via.placeholder.com/640x360?text=Vimeo';
                     thumbnail.src = thumbnailUrl;
                     thumbnail.style.cssText = 'width: 100%; height: 100%; object-fit: contain;';
                     thumbnail.alt = 'Vimeo Video Thumbnail';
@@ -1480,8 +1641,7 @@ window.MediaPreviewScreenClass = class MediaPreviewScreen {
                     mediaContainer.appendChild(thumbnailContainer);
                     mediaContainer.appendChild(infoDiv);
                     console.log('🎵 Vimeo thumbnail preview created successfully');
-                } catch (error) {
-                    console.error('🎵 Failed to fetch Vimeo metadata:', error);
+                } else {
                     this.showMediaError('Unable to load Vimeo video preview');
                 }
             }
@@ -1929,6 +2089,9 @@ window.MediaPreviewScreenClass = class MediaPreviewScreen {
         
         this.mediaOverlay.appendChild(mediaContainer);
         
+        // ALWAYS add like/dislike buttons for ALL media (not just playlist mode)
+        this.addFeedbackButtons();
+        
         // Add playlist controls if in furniture or path playback mode
         this.addPlaylistControls();
         
@@ -1936,6 +2099,68 @@ window.MediaPreviewScreenClass = class MediaPreviewScreen {
         setTimeout(() => {
             this.attachButtonListeners();
         }, 0);
+    }
+    
+    /**
+     * Add like/dislike feedback buttons at bottom center
+     */
+    addFeedbackButtons() {
+        const feedbackContainer = document.createElement('div');
+        feedbackContainer.id = 'mediaFeedbackContainer';
+        feedbackContainer.style.cssText = `
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            z-index: 1001;
+            pointer-events: auto;
+        `;
+        
+        // Like button
+        const likeBtn = document.createElement('button');
+        likeBtn.id = 'likeMediaBtn';
+        likeBtn.innerHTML = '👍 Like';
+        likeBtn.style.cssText = `
+            background: #27ae60;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 24px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            pointer-events: auto;
+            touch-action: manipulation;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        `;
+        
+        // Dislike button
+        const dislikeBtn = document.createElement('button');
+        dislikeBtn.id = 'dislikeMediaBtn';
+        dislikeBtn.innerHTML = '👎 Dislike';
+        dislikeBtn.style.cssText = `
+            background: #c0392b;
+            color: white;
+            border: none;
+            border-radius: 8px;
+            padding: 12px 24px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            pointer-events: auto;
+            touch-action: manipulation;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        `;
+        
+        feedbackContainer.appendChild(likeBtn);
+        feedbackContainer.appendChild(dislikeBtn);
+        this.mediaOverlay.appendChild(feedbackContainer);
+        
+        console.log('🎵 Added feedback buttons at bottom center');
     }
     
     /**
@@ -2440,6 +2665,54 @@ window.MediaPreviewScreenClass = class MediaPreviewScreen {
             });
         } else {
             console.error('🎵 Fullscreen button NOT FOUND in DOM!');
+        }
+        
+        // Setup like button (with touch support for mobile)
+        const likeBtn = document.getElementById('likeMediaBtn');
+        if (likeBtn) {
+            console.log('🎵 Like button found, attaching event listeners');
+            const handleLike = (e) => {
+                console.log('🎵 Like button clicked');
+                e.preventDefault();
+                e.stopPropagation();
+                this.recordFeedback('liked');
+                
+                // Visual feedback - show checkmark and darken background
+                likeBtn.innerHTML = '✓ Liked!';
+                likeBtn.style.background = '#1e8449';
+                likeBtn.style.transform = 'scale(1.1)';
+                setTimeout(() => {
+                    likeBtn.innerHTML = '👍 Like';
+                    likeBtn.style.background = '#27ae60';
+                    likeBtn.style.transform = 'scale(1)';
+                }, 2000);
+            };
+            likeBtn.addEventListener('click', handleLike);
+            likeBtn.addEventListener('touchend', handleLike);
+        }
+        
+        // Setup dislike button (with touch support for mobile)
+        const dislikeBtn = document.getElementById('dislikeMediaBtn');
+        if (dislikeBtn) {
+            console.log('🎵 Dislike button found, attaching event listeners');
+            const handleDislike = (e) => {
+                console.log('🎵 Dislike button clicked');
+                e.preventDefault();
+                e.stopPropagation();
+                this.recordFeedback('disliked');
+                
+                // Visual feedback - show checkmark and darken background
+                dislikeBtn.innerHTML = '✓ Disliked';
+                dislikeBtn.style.background = '#922b21';
+                dislikeBtn.style.transform = 'scale(1.1)';
+                setTimeout(() => {
+                    dislikeBtn.innerHTML = '👎 Dislike';
+                    dislikeBtn.style.background = '#c0392b';
+                    dislikeBtn.style.transform = 'scale(1)';
+                }, 2000);
+            };
+            dislikeBtn.addEventListener('click', handleDislike);
+            dislikeBtn.addEventListener('touchend', handleDislike);
         }
         
         // Setup minimize to PiP button (only for local audio/video files)

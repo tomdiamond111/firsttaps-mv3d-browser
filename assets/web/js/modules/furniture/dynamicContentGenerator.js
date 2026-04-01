@@ -570,6 +570,28 @@
             
             console.log(`🔄 [REFRESH #${callId}] refreshAllFurniture() called at ${timestamp}`);
 
+            // BROWSER MODE: Use browserRecommendationsFetcher for API content
+            if (window.IS_BROWSER_MODE && window.browserRecommendationsFetcher) {
+                console.log(`🌐 [REFRESH #${callId}] Browser mode detected - using browserRecommendationsFetcher...`);
+                try {
+                    // Force refresh to fetch fresh content from APIs
+                    await window.browserRecommendationsFetcher.initialize(true);
+                    console.log(`✅ [REFRESH #${callId}] Browser recommendations fetched successfully`);
+                    
+                    // Perform the refresh
+                    await this._performFurnitureRefresh();
+                    this.isRefreshing = false;
+                    return;
+                    
+                } catch (error) {
+                    console.error(`❌ [REFRESH #${callId}] Failed to fetch browser recommendations:`, error);
+                    // Fall back to cached content
+                    await this._performFurnitureRefresh();
+                    this.isRefreshing = false;
+                    return;
+                }
+            }
+
             // CRITICAL: Request fresh recommendations from Dart (real content URLs with thumbnails)
             console.log(`📡 [REFRESH #${callId}] Requesting fresh recommendations from Dart...`);
             
@@ -603,12 +625,69 @@
                 this.isRefreshing = false;
             };
             
-            // Request fresh recommendations from Dart via channel
-            if (window.RefreshRecommendationsChannel) {
+            // Try browser mode first (for web browser deployment)
+            if (window.IS_BROWSER_MODE && window.browserRecommendationsFetcher) {
+                console.log(`📡 [REFRESH #${callId}] Using browser mode API integration...`);
+                try {
+                    // Force refresh from YouTube API and other platforms
+                    await window.browserRecommendationsFetcher.initialize(true);
+                    console.log(`✅ Browser recommendations refreshed from APIs`);
+                    
+                    // Perform the refresh with newly fetched content
+                    await this._performFurnitureRefresh();
+                    this.isRefreshing = false;
+                    
+                } catch (error) {
+                    console.error('❌ Failed to fetch from browser APIs:', error);
+                    // Fall back to cached content
+                    await this._performFurnitureRefresh();
+                    this.isRefreshing = false;
+                }
+            }
+            // Try new recommendation system (Flutter web/mobile integration)
+            else if (window.recommendationContentManager && typeof window.recommendationContentManager.getGalleryWallLinks === 'function') {
+                console.log(`📡 [REFRESH #${callId}] Using new recommendation system API...`);
+                try {
+                    // Fetch fresh content for all furniture types
+                    const galleryLinks = await window.recommendationContentManager.getGalleryWallLinks(true); // forceRefresh
+                    const smallStageLinks = await window.recommendationContentManager.getSmallStageLinks(true);
+                    const riserLinks = await window.recommendationContentManager.getRiserLinks(true);
+                    
+                    console.log(`✅ Got ${galleryLinks.length} gallery, ${smallStageLinks.length} stage, ${riserLinks.length} riser links`);
+                    
+                    // Update window.DART_RECOMMENDATIONS for compatibility
+                    window.DART_RECOMMENDATIONS = {
+                        'gallery_wall': {
+                            furnitureType: 'gallery_wall',
+                            links: galleryLinks
+                        },
+                        'small_stage': {
+                            furnitureType: 'small_stage',
+                            links: smallStageLinks
+                        },
+                        'riser': {
+                            furnitureType: 'riser',
+                            links: riserLinks
+                        }
+                    };
+                    
+                    // Perform the refresh
+                    await this._performFurnitureRefresh();
+                    this.isRefreshing = false;
+                    
+                } catch (error) {
+                    console.error('❌ Failed to fetch from recommendation API:', error);
+                    // Fall back to cached content
+                    await this._performFurnitureRefresh();
+                    this.isRefreshing = false;
+                }
+            }
+            // Legacy Flutter channel (for native app)
+            else if (window.RefreshRecommendationsChannel) {
                 console.log(`📡 [REFRESH #${callId}] Calling RefreshRecommendationsChannel...`);
                 window.RefreshRecommendationsChannel.postMessage('refresh');
             } else {
-                console.warn(`⚠️ [REFRESH #${callId}] RefreshRecommendationsChannel not available, using cached recommendations`);
+                console.warn(`⚠️ [REFRESH #${callId}] No recommendation system available, using cached recommendations`);
                 // Proceed with cached data
                 await this._performFurnitureRefresh();
                 // Clear refresh flag
@@ -647,6 +726,28 @@
             // Set refresh flag
             this.isRefreshing = true;
 
+            // BROWSER MODE: Use browserRecommendationsFetcher for API content
+            if (window.IS_BROWSER_MODE && window.browserRecommendationsFetcher) {
+                console.log(`🌐 Browser mode detected - using browserRecommendationsFetcher for furniture ${furnitureId.substring(0, 8)}...`);
+                try {
+                    // Force refresh to fetch fresh content from APIs
+                    await window.browserRecommendationsFetcher.initialize(true);
+                    console.log(`✅ Browser recommendations fetched successfully`);
+                    
+                    // Perform the refresh
+                    await this._performFurnitureRefresh(furnitureId);
+                    this.isRefreshing = false;
+                    return;
+                    
+                } catch (error) {
+                    console.error(`❌ Failed to fetch browser recommendations:`, error);
+                    // Fall back to cached content
+                    await this._performFurnitureRefresh(furnitureId);
+                    this.isRefreshing = false;
+                    return;
+                }
+            }
+
             // CRITICAL: Request fresh recommendations from Dart (real content URLs with thumbnails)
             console.log('📡 Requesting fresh recommendations from Dart...');
             
@@ -673,12 +774,47 @@
                 this.isRefreshing = false;
             };
             
-            // Request fresh recommendations from Dart via channel
-            if (window.RefreshRecommendationsChannel) {
+            // Try new recommendation system first (browser API integration)
+            if (window.getContentForFurniture && typeof window.getContentForFurniture === 'function') {
+                console.log('📡 Using new recommendation system API...');
+                try {
+                    const furniture = window.app.furnitureManager.getFurniture(furnitureId);
+                    if (!furniture) {
+                        console.error(`❌ Furniture not found: ${furnitureId}`);
+                        this.isRefreshing = false;
+                        return;
+                    }
+                    
+                    // Fetch fresh content from API
+                    const freshLinks = await window.getContentForFurniture(furniture.type, true); // forceRefresh = true
+                    console.log(`✅ Got ${freshLinks.length} fresh links from recommendation API`);
+                    
+                    // Update window.DART_RECOMMENDATIONS for compatibility
+                    if (!window.DART_RECOMMENDATIONS) {
+                        window.DART_RECOMMENDATIONS = {};
+                    }
+                    window.DART_RECOMMENDATIONS[furniture.type] = {
+                        furnitureType: furniture.type,
+                        links: freshLinks
+                    };
+                    
+                    // Perform the refresh
+                    await this._performFurnitureRefresh(furnitureId);
+                    this.isRefreshing = false;
+                    
+                } catch (error) {
+                    console.error('❌ Failed to fetch from recommendation API:', error);
+                    // Fall back to cached content
+                    await this._performFurnitureRefresh(furnitureId);
+                    this.isRefreshing = false;
+                }
+            }
+            // Legacy Flutter channel (for native app)
+            else if (window.RefreshRecommendationsChannel) {
                 console.log('📡 Calling RefreshRecommendationsChannel...');
                 window.RefreshRecommendationsChannel.postMessage('refresh');
             } else {
-                console.warn('⚠️ RefreshRecommendationsChannel not available, using cached recommendations');
+                console.warn('⚠️ No recommendation system available, using cached recommendations');
                 // Proceed with cached data
                 await this._performFurnitureRefresh(furnitureId);
                 // Clear refresh flag
@@ -859,12 +995,64 @@
                         // Try to fill empty slots with available links
                         const linksToTry = Math.min(availableLinks.length, emptySlotIndices.length);
                         
+                        // CRITICAL: Apply preference filtering during refresh
+                        // Check each URL against user dislikes and blocked channels/artists
+                        const filteredSlots = [];
                         for (let i = 0; i < linksToTry; i++) {
                             const slotIdx = emptySlotIndices[i];
-                            const link = availableLinks.shift(); // Remove from available links
+                            let link = availableLinks.shift(); // Remove from available links
                             const slotPos = slotPositions[slotIdx];
                             
                             if (!slotPos) continue;
+                            
+                            // Skip disliked URLs
+                            let attempts = 0;
+                            const maxAttempts = 5;
+                            while (link && attempts < maxAttempts) {
+                                // Check if URL is explicitly disliked
+                                if (window.mediaFeedback && window.mediaFeedback.isDisliked(link)) {
+                                    console.log(`🔇 Skipping disliked URL during refresh: ${link}`);
+                                    link = availableLinks.shift(); // Try next link
+                                    attempts++;
+                                    continue;
+                                }
+                                
+                                // Check preference learning filters (channel/artist blocks)
+                                if (window.contentPreferenceLearningService) {
+                                    // Try to extract metadata for filtering
+                                    // For YouTube, we can check the video ID against known metadata
+                                    const youtubeMatch = link.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\s]+)/);
+                                    let shouldFilter = false;
+                                    
+                                    if (youtubeMatch) {
+                                        const videoId = youtubeMatch[1];
+                                        // Check if we have cached metadata for this video
+                                        const cachedMetadata = window.videoMetadataCache?.[videoId];
+                                        if (cachedMetadata) {
+                                            const filterResult = window.contentPreferenceLearningService.shouldFilterContent(cachedMetadata);
+                                            if (filterResult.shouldFilter) {
+                                                console.log(`🔇 Filtering content: ${filterResult.reason} (${cachedMetadata.title || link})`);
+                                                shouldFilter = true;
+                                            }
+                                        }
+                                    }
+                                    
+                                    if (shouldFilter) {
+                                        link = availableLinks.shift(); // Try next link
+                                        attempts++;
+                                        continue;
+                                    }
+                                }
+                                
+                                // Link passed all filters, break to use it
+                                break;
+                            }
+                            
+                            // If we ran out of attempts or links, skip this slot
+                            if (!link || attempts >= maxAttempts) {
+                                console.warn(`⚠️ Could not find unfiltered content for slot ${slotIdx} after ${attempts} attempts`);
+                                continue;
+                            }
                             
                             try {
                                 // Create and assign link object to furniture slot using spawner

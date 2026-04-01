@@ -124,19 +124,11 @@ class PersistenceService {
   Future<void> savePersistedFiles(List<FileModel> files) async {
     final prefs = await SharedPreferences.getInstance();
 
-    // DESIGN DECISION: Filter out demo files before persisting
-    // Demo files are first-install-only and intentionally NOT persisted.
-    // This keeps user's library clean while still showing them the feature preview.
-    // User-added MP3/MP4 files do NOT have isDemo flag and persist normally.
-    final filesToPersist = files.where((file) => !file.isDemo).toList();
-
-    final int filteredCount = files.length - filesToPersist.length;
-    if (filteredCount > 0) {
-      print(
-        'PersistenceService: Filtered out $filteredCount demo files from persistence',
-      );
-      // Performance: Reduced logging - no longer logging each demo file individually
-    }
+    // DESIGN DECISION: Persist ALL files including demo content
+    // Demo content persists with long-duration caching to avoid re-fetching metadata.
+    // Objects only change if user explicitly moves/deletes or refreshes furniture.
+    // Modified demo objects retain user changes after reload.
+    final filesToPersist = files;
 
     final List<Map<String, dynamic>> encodableList = filesToPersist
         .map((file) => file.toJson())

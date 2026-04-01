@@ -1238,51 +1238,49 @@ class URLProcessor {
      * @returns {Promise<Object|null>} - Video metadata or null
      */
     async fetchDailymotionOEmbed(url) {
-        return new Promise((resolve) => {
-            console.log('🎬 [FLUTTER BRIDGE] Requesting Dailymotion metadata for:', url);
+        return new Promise(async (resolve) => {
+            console.log('🎬 [DAILYMOTION API] Requesting metadata for:', url);
             
-            // Check if Flutter bridge is available
-            if (!window.DailymotionMetadataChannel) {
-                console.warn('⚠️ DailymotionMetadataChannel not available, cannot fetch metadata');
+            // Extract video ID from URL
+            const videoIdMatch = url.match(/video\/([a-zA-Z0-9]+)/);
+            if (!videoIdMatch) {
+                console.warn('⚠️ Could not extract Dailymotion video ID from URL');
                 resolve(null);
                 return;
             }
             
-            // Generate unique callback name to prevent race conditions
-            const callbackId = 'urlProcessorCallback_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
-            const callbackName = 'dailymotionMetadataCallback_' + callbackId;
+            const videoId = videoIdMatch[1];
             
-            // Set up callback for Flutter response
-            window[callbackName] = (metadata) => {
-                console.log('🎬 [FLUTTER BRIDGE] Received Dailymotion metadata:', metadata);
-                delete window[callbackName];
-                resolve(metadata);
-            };
-            
-            // Request metadata from Flutter
-            const requestData = {
-                action: 'getDailymotionMetadata',
-                url: url,
-                callbackName: callbackName  // Pass unique callback name to Flutter
-            };
-            
+            // Try direct Dailymotion API call (no auth required for public videos)
             try {
-                window.DailymotionMetadataChannel.postMessage(JSON.stringify(requestData));
-                console.log('🎬 [FLUTTER BRIDGE] Metadata request sent to Flutter with callback:', callbackName);
+                const apiUrl = `https://api.dailymotion.com/video/${videoId}?fields=id,title,thumbnail_url,duration`;
+                console.log('🎬 [DAILYMOTION API] Calling:', apiUrl);
+                
+                const response = await fetch(apiUrl);
+                
+                if (!response.ok) {
+                    console.warn(`⚠️ Dailymotion API error: ${response.status}`);
+                    resolve(null);
+                    return;
+                }
+                
+                const data = await response.json();
+                console.log('🎬 [DAILYMOTION API] Received metadata:', data);
+                
+                // Format response to match oEmbed structure
+                const metadata = {
+                    title: data.title || 'Dailymotion Video',
+                    author_name: '', // Dailymotion API doesn't provide author in basic fields
+                    thumbnail_url: data.thumbnail_url || null
+                };
+                
+                console.log('✅ [DAILYMOTION API] Successfully fetched title:', metadata.title);
+                resolve(metadata);
+                
             } catch (error) {
-                console.error('❌ Error sending Dailymotion metadata request:', error);
-                delete window[callbackName];
+                console.error('❌ Error fetching Dailymotion metadata:', error);
                 resolve(null);
             }
-            
-            // Timeout after 5 seconds
-            setTimeout(() => {
-                if (window[callbackName]) {
-                    console.warn('⏱️ Dailymotion metadata request timed out');
-                    delete window[callbackName];
-                    resolve(null);
-                }
-            }, 5000);
         });
     }
 

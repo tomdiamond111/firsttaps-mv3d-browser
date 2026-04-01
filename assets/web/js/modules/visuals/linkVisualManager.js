@@ -1852,6 +1852,15 @@
          * @private
          */
         async _fetchTikTokThumbnailUrl(url) {
+            // CHECK CACHE FIRST
+            if (window.metadataCache) {
+                const cached = window.metadataCache.get(url);
+                if (cached && cached.thumbnailUrl) {
+                    console.log('💾 [TIKTOK] Cache hit - returning cached thumbnail');
+                    return cached.thumbnailUrl;
+                }
+            }
+            
             const maxRetries = 3;
             const baseTimeout = 8000; // 8 seconds
             
@@ -1911,6 +1920,13 @@
                     
                     if (data.thumbnail_url) {
                         console.log(`🎵 [TIKTOK] ✅ Successfully fetched thumbnail URL`);
+                        
+                        // CACHE THE RESULT
+                        if (window.metadataCache) {
+                            window.metadataCache.set(url, data.thumbnail_url, data);
+                            console.log('💾 [TIKTOK] Cached metadata for future use');
+                        }
+                        
                         return data.thumbnail_url;
                     } else {
                         console.warn('🎵 [TIKTOK] ⚠️ No thumbnail_url in oEmbed data');
@@ -2039,6 +2055,23 @@
             try {
                 if (DEBUG) console.log('🎵 Attempting to load Spotify thumbnail for:', url);
                 
+                // CHECK CACHE FIRST
+                if (window.metadataCache) {
+                    const cached = window.metadataCache.get(url);
+                    if (cached && cached.thumbnailUrl) {
+                        console.log('💾 [SPOTIFY] Cache hit - applying cached thumbnail');
+                        const success = await this.loadAndApplyThumbnail(linkObject, cached.thumbnailUrl, cached.metadata.trackId);
+                        if (success && cached.metadata) {
+                            linkObject.userData.spotifyMetadata = {
+                                thumbnail_url: cached.thumbnailUrl,
+                                title: cached.metadata.title,
+                                artist_name: cached.metadata.artist_name
+                            };
+                        }
+                        return success;
+                    }
+                }
+                
                 // Extract track ID from Spotify URL
                 const trackId = this.extractSpotifyTrackId(url);
                 if (!trackId) {
@@ -2068,6 +2101,16 @@
                     }
                     
                     if (DEBUG) console.log('🎵 Found Spotify thumbnail URL:', thumbnailUrl);
+                    
+                    // CACHE THE RESULT
+                    if (window.metadataCache) {
+                        window.metadataCache.set(url, thumbnailUrl, {
+                            trackId: trackId,
+                            title: data.title,
+                            artist_name: data.author_name
+                        });
+                        console.log('💾 [SPOTIFY] Cached metadata for future use');
+                    }
                     
                     // Load and apply the thumbnail
                     const success = await this.loadAndApplyThumbnail(linkObject, thumbnailUrl, trackId);
@@ -2197,66 +2240,149 @@
          * @returns {Promise<boolean>} - True if thumbnail was successfully applied
          */
         async tryVimeoThumbnail(linkObject, url, category, domain) {
-            const maxRetries = 3;
+            // CHECK CACHE FIRST
+            if (window.metadataCache) {
+                const cached = window.metadataCache.get(url);
+                if (cached && cached.thumbnailUrl) {
+                    console.log('💾 [VIMEO] Cache hit - applying cached thumbnail');
+                    const success = await this.loadAndApplyThumbnail(linkObject, cached.thumbnailUrl, cached.metadata.videoId);
+                    return success;
+                }
+                // Check if this URL was previously marked as failed (404 or private)
+                if (cached && cached.failed) {
+                    console.log('💾 [VIMEO] Cache shows this video previously failed (404/private), using fallback');
+                    return false;
+                }
+            }
+            
+            // TRY FLUTTER BRIDGE FIRST (bypasses CORS)
+            if (window.VimeoMetadataChannel) {
+                try {
+                    console.log('🎬 [FLUTTER BRIDGE] Requesting Vimeo metadata...');
+                    const callbackId = 'vimeoThumbCallback_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                    
+                    const metadata = await new Promise((resolve) => {
+                        window[callbackId] = (data) => {
+                            delete window[callbackId];
+                            resolve(data);
+                        };
+                        
+                        window.VimeoMetadataChannel.postMessage(JSON.stringify({
+                            action: 'getVimeoMetadata',
+                            url: url,
+                            callbackName: callbackId
+                        }));
+                        
+                        // Timeout after 5 seconds
+                        setTimeout(() => {
+                            if (window[callbackId]) {
+                                delete window[callbackId];
+                                resolve(null);
+                            }
+                        }, 5000);
+                    });
+                    
+                    if (metadata && metadata.thumbnailUrl) {
+                        console.log('🎬 [FLUTTER BRIDGE] Got Vimeo metadata:', metadata);
+                        
+                        // Cache the result
+                        if (window.metadataCache) {
+                            window.metadataCache.set(url, metadata.thumbnailUrl, {
+                                videoId: metadata.videoId || 'unknown',
+                                title: metadata.title,
+                                author_name: metadata.author
+                            });
+                        }
+                        
+                        const success = await this.loadAndApplyThumbnail(linkObject, metadata.thumbnailUrl, metadata.videoId || 'unknown');
+                        if (success) {
+                            console.log('✅ Vimeo thumbnail loaded via Flutter bridge');
+                            return true;
+                        }
+                    }
+                } catch (bridgeError) {
+                    console.warn('⚠️ Flutter bridge failed for Vimeo:', bridgeError.message);
+                }
+            }
+            
+            // FALLBACK: Try direct oEmbed API (may fail with CORS)
+            const maxRetries = 2; // Reduced retries since CORS will fail anyway
             
             for (let attempt = 1; attempt <= maxRetries; attempt++) {
                 try {
-                    console.log(`🎬 Attempt ${attempt}/${maxRetries}: Attempting to load Vimeo thumbnail for:`, url);
+                    console.log(`🎬 Attempt ${attempt}/${maxRetries}: Trying Vimeo oEmbed API...`);
                     
-                    // Use Vimeo oEmbed API to fetch video metadata including thumbnail
                     const oEmbedUrl = `https://vimeo.com/api/oembed.json?url=${encodeURIComponent(url)}`;
-                    console.log('🎬 Fetching Vimeo oEmbed data from:', oEmbedUrl);
                     
                     try {
                         const response = await fetch(oEmbedUrl);
                         if (!response.ok) {
-                            console.warn(`⚠️ Vimeo oEmbed API request failed (attempt ${attempt}):`, response.status);
+                            // 404 = video doesn't exist or is private - don't retry
+                            if (response.status === 404) {
+                                console.warn(`⚠️ Vimeo video not found (404) - may be private/deleted`);
+                                // Cache the failure so we don't keep trying
+                                if (window.metadataCache) {
+                                    window.metadataCache.set(url, null, { failed: true, reason: '404' });
+                                }
+                                return false;
+                            }
+                            console.warn(`⚠️ Vimeo oEmbed API failed (${response.status})`);
                             if (attempt < maxRetries) {
-                                const waitTime = 1000 * attempt; // 1s, 2s, 3s
-                                console.log(`🎬 Waiting ${waitTime}ms before retry...`);
-                                await new Promise(resolve => setTimeout(resolve, waitTime));
+                                await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
                                 continue;
                             }
                             return false;
                         }
                         
                         const data = await response.json();
-                        console.log('🎬 Vimeo oEmbed data received:', data);
                         
                         // Extract thumbnail URL from oEmbed response
                         const thumbnailUrl = data.thumbnail_url;
                         if (!thumbnailUrl) {
-                            console.warn('⚠️ No thumbnail URL in Vimeo oEmbed response');
+                            console.warn('⚠️ No thumbnail in Vimeo oEmbed response');
                             return false;
                         }
-                        
-                        console.log('🎬 Found Vimeo thumbnail URL:', thumbnailUrl);
                         
                         // Extract video ID for logging
                         const videoId = data.video_id || 'unknown';
                         
+                        // CACHE THE RESULT
+                        if (window.metadataCache) {
+                            window.metadataCache.set(url, thumbnailUrl, {
+                                videoId: videoId,
+                                title: data.title,
+                                author_name: data.author_name
+                            });
+                        }
+                        
                         // Load and apply the thumbnail
                         const success = await this.loadAndApplyThumbnail(linkObject, thumbnailUrl, videoId);
                         if (success) {
-                            console.log(`✅ Successfully loaded Vimeo thumbnail on attempt ${attempt}`);
+                            console.log(`✅ Vimeo thumbnail loaded via oEmbed (attempt ${attempt})`);
                             return true;
                         }
                         
-                        // If loadAndApplyThumbnail failed, retry
                         if (attempt < maxRetries) {
-                            const waitTime = 1000 * attempt;
-                            console.log(`🎬 Thumbnail load failed, waiting ${waitTime}ms before retry...`);
-                            await new Promise(resolve => setTimeout(resolve, waitTime));
+                            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
                             continue;
                         }
                         return false;
                         
                     } catch (fetchError) {
-                        console.error(`❌ Error fetching Vimeo oEmbed data (attempt ${attempt}):`, fetchError);
+                        // CORS or network errors - cache failure and use fallback
+                        const isCorsError = fetchError.message && (fetchError.message.includes('CORS') || fetchError.message.includes('TypeError'));
+                        if (isCorsError) {
+                            console.warn('⚠️ Vimeo CORS error - will use fallback branding');
+                            // Cache as failed to avoid repeated attempts
+                            if (window.metadataCache) {
+                                window.metadataCache.set(url, null, { failed: true, reason: 'CORS' });
+                            }
+                            return false; // Don't retry CORS errors
+                        }
+                        
+                        console.error(`❌ Vimeo fetch error (attempt ${attempt}):`, fetchError.message);
                         if (attempt < maxRetries) {
-                            const waitTime = 1000 * attempt;
-                            console.log(`🎬 Waiting ${waitTime}ms before retry...`);
-                            await new Promise(resolve => setTimeout(resolve, waitTime));
+                            await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
                             continue;
                         }
                         return false;
@@ -2350,6 +2476,11 @@
                     return false;
                 }
                 
+                // Initialize global metadata cache if not exists
+                if (!window.videoMetadataCache) {
+                    window.videoMetadataCache = {};
+                }
+                
                 // Fetch YouTube metadata via oEmbed if we don't have it yet
                 if (!linkObject.userData.youtubeMetadata) {
                     try {
@@ -2358,12 +2489,24 @@
                         if (response.ok) {
                             const data = await response.json();
                             if (data.title) {
+                                // Store in object
                                 linkObject.userData.youtubeMetadata = {
                                     title: data.title,
+                                    author_name: data.author_name,
+                                    channelTitle: data.author_name, // For compatibility with filtering
+                                    thumbnail_url: data.thumbnail_url,
+                                    videoId: videoId
+                                };
+                                
+                                // CRITICAL: Store in global cache for filtering system
+                                window.videoMetadataCache[videoId] = {
+                                    title: data.title,
+                                    channelTitle: data.author_name,
                                     author_name: data.author_name,
                                     thumbnail_url: data.thumbnail_url,
                                     videoId: videoId
                                 };
+                                console.log(`📊 Cached YouTube metadata for filtering: ${videoId} (${data.author_name})`);
                             }
                         }
                     } catch (oEmbedError) {
@@ -2600,14 +2743,80 @@
                     }
                 }
 
-                // Fetch thumbnail from Vimeo oEmbed API
-                console.log('🎬 [API] Fetching Vimeo thumbnail from oEmbed API...');
+                // TRY FLUTTER BRIDGE FIRST (bypasses CORS)
+                if (window.VimeoMetadataChannel) {
+                    try {
+                        console.log('🎬 [FLUTTER BRIDGE] Requesting Vimeo metadata for branding...');
+                        const callbackId = 'vimeoBrandCallback_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+                        
+                        const metadata = await new Promise((resolve) => {
+                            window[callbackId] = (data) => {
+                                delete window[callbackId];
+                                resolve(data);
+                            };
+                            
+                            window.VimeoMetadataChannel.postMessage(JSON.stringify({
+                                action: 'getVimeoMetadata',
+                                url: url,
+                                callbackName: callbackId
+                            }));
+                            
+                            // Timeout after 5 seconds
+                            setTimeout(() => {
+                                if (window[callbackId]) {
+                                    delete window[callbackId];
+                                    resolve(null);
+                                }
+                            }, 5000);
+                        });
+                        
+                        if (metadata && metadata.thumbnailUrl) {
+                            console.log('🎬 [FLUTTER BRIDGE] Got Vimeo metadata for branding:', metadata);
+                            
+                            // Store metadata
+                            if (!linkObject.userData.vimeoMetadata) {
+                                linkObject.userData.vimeoMetadata = {
+                                    title: metadata.title,
+                                    author_name: metadata.author,
+                                    thumbnail_url: metadata.thumbnailUrl,
+                                    video_id: metadata.videoId
+                                };
+                            }
+                            
+                            // Cache for future use
+                            if (linkData) {
+                                linkData.thumbnailUrl = metadata.thumbnailUrl;
+                            }
+                            
+                            const success = await this.loadAndApplyThumbnailToBrandedObject(linkObject, metadata.thumbnailUrl, metadata.videoId || 'unknown');
+                            if (success) {
+                                console.log(`✅ Vimeo thumbnail applied via Flutter bridge: ${metadata.videoId}`);
+                                
+                                // Update label
+                                if (window.linkTitleManager && linkObject.userData.vimeoMetadata) {
+                                    window.linkTitleManager.createOrUpdateLabel(linkObject);
+                                }
+                                
+                                return true;
+                            }
+                        }
+                    } catch (bridgeError) {
+                        console.warn('⚠️ Flutter bridge failed for Vimeo branding:', bridgeError.message);
+                    }
+                }
+
+                // FALLBACK: Try oEmbed API (may fail with CORS)
+                console.log('🎬 [API] Falling back to Vimeo oEmbed API...');
                 const oEmbedUrl = `https://vimeo.com/api/oembed.json?url=${encodeURIComponent(url)}`;
                 
                 try {
                     const response = await fetch(oEmbedUrl);
                     if (!response.ok) {
-                        console.warn('⚠️ Vimeo oEmbed API request failed:', response.status);
+                        if (response.status === 404) {
+                            console.warn('⚠️ Vimeo video not found (404) - may be private/deleted');
+                        } else {
+                            console.warn(`⚠️ Vimeo oEmbed failed: ${response.status}`);
+                        }
                         return false;
                     }
                     
@@ -2615,11 +2824,11 @@
                     thumbnailUrl = data.thumbnail_url;
                     
                     if (!thumbnailUrl) {
-                        console.warn('⚠️ No thumbnail URL in Vimeo oEmbed response');
+                        console.warn('⚠️ No thumbnail in Vimeo oEmbed response');
                         return false;
                     }
                     
-                    // Store Vimeo metadata from oEmbed
+                    // Store metadata
                     if (data.title && !linkObject.userData.vimeoMetadata) {
                         linkObject.userData.vimeoMetadata = {
                             title: data.title,
@@ -2627,31 +2836,33 @@
                             thumbnail_url: data.thumbnail_url,
                             video_id: data.video_id
                         };
-                        console.log('🎬 Stored Vimeo metadata:', linkObject.userData.vimeoMetadata);
                     }
                     
                     // Cache for future use
                     if (linkData) {
                         linkData.thumbnailUrl = thumbnailUrl;
-                        console.log('🎬 [CACHE] Cached Vimeo thumbnail URL');
                     }
                     
                     const videoId = data.video_id || 'unknown';
                     const success = await this.loadAndApplyThumbnailToBrandedObject(linkObject, thumbnailUrl, videoId);
                     if (success) {
-                        console.log(`✅ Vimeo thumbnail applied to branded object: ${videoId}`);
+                        console.log(`✅ Vimeo thumbnail applied via oEmbed: ${videoId}`);
                         
-                        // Update label now that we have metadata
+                        // Update label with metadata
                         if (window.linkTitleManager && linkObject.userData.vimeoMetadata) {
                             window.linkTitleManager.createOrUpdateLabel(linkObject);
-                            console.log('📝 Updated label with Vimeo metadata');
                         }
                         
                         return true;
                     }
                     
                 } catch (fetchError) {
-                    console.error('❌ Error fetching Vimeo oEmbed data:', fetchError);
+                    const isCorsError = fetchError.message && (fetchError.message.includes('CORS') || fetchError.message.includes('TypeError'));
+                    if (isCorsError) {
+                        console.warn('⚠️ Vimeo CORS error - will use fallback branding');
+                    } else {
+                        console.error(`❌ Vimeo fetch error: ${fetchError.message}`);
+                    }
                     return false;
                 }
 
@@ -2871,7 +3082,54 @@
                     }
                 }
 
-                // Fetch thumbnail from Flutter bridge (bypasses CORS)
+                // Try to fetch thumbnail directly from Dailymotion API first (browser mode)
+                console.log('🎬 [API] Attempting direct Dailymotion API fetch for branding...');
+                
+                try {
+                    // Direct API call to Dailymotion (public, no auth needed for basic info)
+                    const apiUrl = `https://api.dailymotion.com/video/${videoId}?fields=id,title,thumbnail_url`;
+                    console.log('🎬 [API] Fetching from:', apiUrl);
+                    
+                    const response = await fetch(apiUrl);
+                    if (response.ok) {
+                        const apiData = await response.json();
+                        if (apiData && apiData.thumbnail_url) {
+                            thumbnailUrl = apiData.thumbnail_url;
+                            
+                            // Store Dailymotion metadata
+                            if (apiData.title && !linkObject.userData.dailymotionMetadata) {
+                                linkObject.userData.dailymotionMetadata = {
+                                    title: apiData.title,
+                                    thumbnail_url: thumbnailUrl
+                                };
+                                console.log('🎬 [API] Stored Dailymotion metadata:', linkObject.userData.dailymotionMetadata);
+                            }
+                            
+                            // Cache for future use
+                            if (linkData) {
+                                linkData.thumbnailUrl = thumbnailUrl;
+                                console.log('🎬 [CACHE] Cached Dailymotion thumbnail URL from API');
+                            }
+                            
+                            const success = await this.loadAndApplyThumbnailToBrandedObject(linkObject, thumbnailUrl, videoId);
+                            if (success) {
+                                console.log(`✅ Dailymotion thumbnail applied to branded object from API: ${videoId}`);
+                                
+                                // Update label with metadata
+                                if (window.linkTitleManager && linkObject.userData.dailymotionMetadata) {
+                                    window.linkTitleManager.createOrUpdateLabel(linkObject);
+                                    console.log('📝 Updated label with Dailymotion metadata');
+                                }
+                                
+                                return true;
+                            }
+                        }
+                    }
+                } catch (apiError) {
+                    console.warn('⚠️ Direct Dailymotion API fetch failed, trying Flutter bridge fallback:', apiError.message);
+                }
+
+                // Fallback: Fetch thumbnail from Flutter bridge (bypasses CORS) - for app mode
                 console.log('🎬 [FLUTTER BRIDGE] Requesting Dailymotion metadata for branding...');
                 
                 try {
@@ -2889,7 +3147,7 @@
                         
                         // Check if Flutter bridge is available
                         if (!window.DailymotionMetadataChannel) {
-                            console.warn('⚠️ DailymotionMetadataChannel not available');
+                            console.warn('⚠️ DailymotionMetadataChannel not available (browser mode)');
                             delete window[callbackName];
                             resolve(null);
                             return;

@@ -1,7 +1,9 @@
 # Build FirstTaps MV3D Browser App
 # This script:
-# 1. Builds the JavaScript bundles (bundle_core_production.js, bundle_premium_production.js)
-# 2. Builds the Flutter web app with environment variables from .env.local
+# 1. Loads environment variables from .env.local
+# 2. Builds the JavaScript bundles (bundle_core_production.js, bundle_premium_production.js)
+# 3. Builds the Flutter web app with environment variables from .env.local
+# 4. Injects API keys from .env.local into the build output HTML files
 #
 # Usage: .\build.ps1
 
@@ -15,7 +17,7 @@ $originalDir = Get-Location
 # ============================================================================
 # STEP 1: Load environment variables from .env.local
 # ============================================================================
-Write-Host "[1/3] Loading API keys from .env.local..." -ForegroundColor Yellow
+Write-Host "[1/4] Loading API keys from .env.local..." -ForegroundColor Yellow
 
 $envFile = Join-Path $originalDir ".env.local"
 if (-not (Test-Path $envFile)) {
@@ -43,7 +45,7 @@ Write-Host ""
 # ============================================================================
 # STEP 2: Build JavaScript bundles
 # ============================================================================
-Write-Host "[2/3] Building JavaScript bundles..." -ForegroundColor Yellow
+Write-Host "[2/4] Building JavaScript bundles..." -ForegroundColor Yellow
 
 $jsBuildScript = Join-Path $originalDir "assets\web\js\build_modular_fixed.ps1"
 if (Test-Path $jsBuildScript) {
@@ -65,7 +67,7 @@ Write-Host ""
 # ============================================================================
 # STEP 3: Build Flutter web app
 # ============================================================================
-Write-Host "[3/3] Building Flutter web app..." -ForegroundColor Yellow
+Write-Host "[3/4] Building Flutter web app..." -ForegroundColor Yellow
 
 # Prepare dart-defines for environment variables
 $dartDefines = @()
@@ -90,6 +92,24 @@ if ($LASTEXITCODE -ne 0) {
 
 Write-Host "Flutter web app built successfully!" -ForegroundColor Green
 Write-Host ""
+
+# ============================================================================
+# STEP 4: Inject API keys into build output
+# ============================================================================
+Write-Host "[4/4] Injecting API keys from .env.local into build..." -ForegroundColor Yellow
+
+$injectScript = Join-Path $originalDir "inject_env_vars.ps1"
+if (Test-Path $injectScript) {
+    & $injectScript -BuildPath "build\web"
+    
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: Environment variable injection failed!" -ForegroundColor Red
+        exit 1
+    }
+} else {
+    Write-Host "WARNING: inject_env_vars.ps1 not found, skipping injection" -ForegroundColor Yellow
+    Write-Host "API keys will not be available in the app" -ForegroundColor Yellow
+}
 
 # ============================================================================
 # BUILD COMPLETE

@@ -13,6 +13,14 @@ class WelcomeInstructionsDialog extends StatelessWidget {
   /// Check if this is the first launch
   static Future<bool> shouldShow() async {
     final prefs = await SharedPreferences.getInstance();
+    final hasShown = prefs.getBool(_prefsKey) ?? false;
+    print('🔍 [WelcomeDialog] Checking shouldShow():');
+    print('   Key: $_prefsKey');
+    print('   Value in prefs: $hasShown');
+    print('   Will show dialog: ${!hasShown}');
+    // DEBUG: List all keys in localStorage to see actual storage
+    final allKeys = html.window.localStorage.keys.toList();
+    print('   All localStorage keys: $allKeys');
     return !(prefs.getBool(_prefsKey) ?? false);
   }
 
@@ -20,27 +28,24 @@ class WelcomeInstructionsDialog extends StatelessWidget {
   static Future<void> markAsShown() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool(_prefsKey, true);
+    print('✅ [WelcomeDialog] Marked as shown: $_prefsKey = true');
+    // DEBUG: Check what key it actually used in localStorage
+    final allKeys = html.window.localStorage.keys.toList();
+    final matchingKeys = allKeys.where((k) => k.contains('first')).toList();
+    print('   localStorage keys containing "first": $matchingKeys');
   }
 
   /// Show the instructions dialog
+  /// Note: Iframe pointer-events management should be handled by the calling screen
   static Future<void> show(BuildContext context) async {
-    // Disable pointer events on iframe to allow dialog interaction
-    final iframe = html.document.querySelector('iframe');
-    iframe?.style.pointerEvents = 'none';
-
-    try {
-      await showDialog(
-        context: context,
-        barrierDismissible: true,
-        builder: (dialogContext) => WelcomeInstructionsDialog(
-          onClose: () => Navigator.of(dialogContext).pop(),
-        ),
-      );
-      await markAsShown();
-    } finally {
-      // Re-enable pointer events on iframe
-      iframe?.style.pointerEvents = 'auto';
-    }
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => WelcomeInstructionsDialog(
+        onClose: () => Navigator.of(dialogContext).pop(),
+      ),
+    );
+    await markAsShown();
   }
 
   @override
@@ -109,60 +114,86 @@ class WelcomeInstructionsDialog extends StatelessWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Introduction paragraph
-                      Text(
-                        'Your go-to place for discovering, playing, and sharing music & videos. The app learns your taste automatically - no setup needed.',
-                        style: TextStyle(
-                          fontSize: 15,
-                          color: Colors.grey.shade800,
-                          height: 1.4,
+                      // Navigation instructions - prominently at top
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF228B22).withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: const Color(0xFF228B22),
+                            width: 2,
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Icon(
+                                  Icons.touch_app,
+                                  color: Color(0xFF228B22),
+                                  size: 24,
+                                ),
+                                SizedBox(width: 8),
+                                Text(
+                                  'How to Navigate:',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF228B22),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              '• Tap once on objects to preview\n'
+                              '• Double tap to open and play content\n'
+                              '• Long press to open menu for Share / Move / Delete',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.grey.shade800,
+                                height: 1.5,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       const SizedBox(height: 24),
+                      // Quick start guide
                       const Text(
-                        'How It Works:',
+                        'Quick Start:',
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
                           color: Color(0xFF228B22),
                         ),
                       ),
-                      const SizedBox(height: 20),
+                      const SizedBox(height: 16),
                       _buildInstruction(
                         '1',
-                        'Play & Discover',
-                        'Double-tap any music/video to play. Tap refresh icon on furniture for AI-powered recommendations based on what you play',
-                        Icons.play_circle_outline,
-                      ),
-                      _buildInstruction(
-                        '2',
-                        'Add Your Content',
-                        'Tap "Add Objects" to add links from YouTube, Spotify, TikTok, Instagram, Deezer, Vimeo, or MP3/MP4 files from your device',
+                        'Add Content',
+                        'Use "Add Objects" to add media from YouTube, Spotify, TikTok, Instagram, and more',
                         Icons.add_circle_outline,
                       ),
                       _buildInstruction(
-                        '3',
-                        'Search Any Platform',
-                        'Tap the search toggle icon to switch between searching your world objects or searching music & videos across platforms like YouTube, Spotify, and more',
-                        Icons.search,
+                        '2',
+                        'Create Playlists',
+                        'Add furniture to organize your media into beautiful 3D collections',
+                        Icons.weekend,
                       ),
                       _buildInstruction(
-                        '4',
-                        'Create & Share Playlists',
-                        'Create furniture (bookshelf, stage, gallery) and drag links onto them. Share your 3D playlists via link - works in any browser',
+                        '3',
+                        'Share Playlists (Furniture)',
+                        'Long press furniture to share your 3D playlists via link - works in any browser',
                         Icons.share,
                       ),
                       _buildInstruction(
-                        '5',
-                        'Navigate Your World',
-                        'Tap map icon for 2D overhead view, or tap walking figure for first-person Explorer mode',
-                        Icons.explore,
-                      ),
-                      _buildInstruction(
-                        '6',
-                        'Contacts & Apps',
-                        'Add contacts and apps to your world. Tap contacts to call or text, tap apps to launch',
-                        Icons.contacts,
+                        '4',
+                        'Get Recommendations',
+                        'Tap refresh icon on furniture for AI-powered recommendations based on what you play',
+                        Icons.refresh,
                       ),
                     ],
                   ),
@@ -252,7 +283,7 @@ class WelcomeInstructionsDialog extends StatelessWidget {
                   description,
                   style: TextStyle(
                     fontSize: 13,
-                    color: Colors.grey.shade700,
+                    color: Colors.grey.shade800,
                     height: 1.3,
                   ),
                 ),

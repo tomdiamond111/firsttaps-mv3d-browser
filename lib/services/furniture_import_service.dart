@@ -27,7 +27,10 @@ class FurnitureImportService {
       String? pasteId;
       String? pasteService;
 
-      if (uri.queryParameters.containsKey('gist')) {
+      if (uri.queryParameters.containsKey('cf')) {
+        pasteId = uri.queryParameters['cf'];
+        pasteService = 'cloudflare';
+      } else if (uri.queryParameters.containsKey('gist')) {
         pasteId = uri.queryParameters['gist'];
         pasteService = 'gist';
       } else if (uri.queryParameters.containsKey('pastesio')) {
@@ -90,6 +93,9 @@ class FurnitureImportService {
       String compressedData;
 
       switch (pasteService) {
+        case 'cloudflare':
+          compressedData = await _fetchFromCloudflare(pasteId);
+          break;
         case 'gist':
           compressedData = await _fetchFromGitHubGist(pasteId);
           break;
@@ -202,6 +208,32 @@ class FurnitureImportService {
     } catch (e) {
       print('❌ [IMPORT] Error importing furniture: $e');
       return false;
+    }
+  }
+
+  /// Fetch data from Cloudflare Workers KV
+  Future<String> _fetchFromCloudflare(String pasteId) async {
+    try {
+      const workerUrl = 'https://firsttaps-paste.firsttaps.workers.dev';
+
+      final response = await http
+          .get(Uri.parse(url))
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return response.body.trim();
+      } else if (response.statusCode == 404) {
+        throw Exception(
+          'Paste not found or expired. Please generate a new share link.',
+        );
+      } else {
+        throw Exception(
+          'Failed to fetch from Cloudflare Workers: ${response.statusCode}',
+        );
+      }
+    } catch (e) {
+      print('❌ [IMPORT] Cloudflare Workers fetch error: $e');
+      return '';
     }
   }
 

@@ -33,6 +33,14 @@ migrate_working_dir/
 .pub/
 /build/
 
+# CRITICAL: Build output must NEVER be committed (contains compiled code with embedded secrets)
+build/
+**/build/
+*.dart.js
+*.dart.js.map
+main.dart.js
+main.dart.js.map
+
 # Symbolication related
 app.*.symbols
 
@@ -46,9 +54,23 @@ app.*.map.json
 
 # Environment variables with API keys
 .env.local
+.env
+.env.*.local
+
+# CRITICAL: Never commit API keys or secrets
+**/apikey*
+**/api_key*
+**/*secret*
+**/*credentials*
 
 # Reference/backup directories
 FirstTapsMV3D_v15GISTREF/
 FirstTapsMV3D_v15REF200/
 *REF*/
 *GIST*/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example

@@ -19,18 +19,19 @@ class DemoContentWithRecommendationsHelper {
   static final RecommendationContentManager _contentManager =
       RecommendationContentManager();
 
-  /// Check if recommendations are enabled and API keys are configured
+  /// Check if recommendations are enabled
+  /// API keys are now handled securely via Cloudflare Worker
   static bool get areRecommendationsEnabled {
     if (!RecommendationsConfig.enableRecommendations) {
       return false;
     }
 
     // Check if at least one content source is configured
-    final hasYouTube = RecommendationsConfig.youtubeApiKey.isNotEmpty;
+    final hasYouTube = true; // Worker handles YouTube/Vimeo securely
     final hasSpotify =
         RecommendationsConfig.spotifyTrendingTrackUrls.isNotEmpty;
     final hasDeezer = RecommendationsConfig.enableDeezerContent;
-    final hasVimeo = RecommendationsConfig.vimeoAccessToken.isNotEmpty;
+    final hasVimeo = true; // Worker handles Vimeo securely
 
     return hasYouTube || hasSpotify || hasDeezer || hasVimeo;
   }

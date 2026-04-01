@@ -556,6 +556,12 @@
             const demoFileMetadata = []; // Store metadata for positioning after batch creation
             
             for (const furniture of createdFurniture) {
+                // SKIP MODIFIED FURNITURE: Don't repopulate furniture that user has modified
+                if (furniture.isModified === true) {
+                    console.log(`🪑 Skipping furniture ${furniture.id} - marked as modified by user`);
+                    continue;
+                }
+                
                 // Find matching playlist for this furniture
                 const playlist = Object.values(playlistSource).find(
                     p => p.furnitureType === furniture.type
@@ -574,6 +580,12 @@
                 const linksToCreate = Math.min(playlist.links.length, slotPositions.length);
                 
                 for (let i = 0; i < linksToCreate; i++) {
+                    // SKIP OCCUPIED SLOTS: Don't overwrite slots that already have objects
+                    if (furniture.objectIds && furniture.objectIds[i] && furniture.objectIds[i] !== null && furniture.objectIds[i] !== '') {
+                        console.log(`🪑 Skipping slot ${i} on furniture ${furniture.id} - already occupied by ${furniture.objectIds[i]}`);
+                        continue;
+                    }
+                    
                     const link = playlist.links[i];
                     const slotPos = slotPositions[i];
                     
@@ -746,6 +758,12 @@
             let totalLinksFailed = 0;
             
             for (const furniture of createdFurniture) {
+                // SKIP MODIFIED FURNITURE: Don't repopulate furniture that user has modified
+                if (furniture.isModified === true) {
+                    console.log(`🪑 Skipping furniture ${furniture.id} - marked as modified by user`);
+                    continue;
+                }
+                
                 const playlist = Object.values(playlistSource).find(
                     p => p.furnitureType === furniture.type
                 );
@@ -763,6 +781,13 @@
                 let failedCount = 0;
                 
                 for (let i = 0; i < linksToCreate; i++) {
+                    // SKIP OCCUPIED SLOTS: Don't overwrite slots that already have objects
+                    if (furniture.objectIds && furniture.objectIds[i] && furniture.objectIds[i] !== null && furniture.objectIds[i] !== '') {
+                        skippedCount++;
+                        console.log(`🪑 Skipping slot ${i} on furniture ${furniture.id} - already occupied by ${furniture.objectIds[i]}`);
+                        continue;
+                    }
+                    
                     const link = playlist.links[i];
                     const slotPos = slotPositions[i];
                     

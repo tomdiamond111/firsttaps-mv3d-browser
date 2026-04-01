@@ -233,36 +233,21 @@ class RecommendationService {
     }
   }
 
-  /// Fetch YouTube Shorts specifically
+  /// Fetch YouTube Shorts via Cloudflare Worker proxy
   Future<List<LinkObject>> _fetchYouTubeShorts(String? regionCode) async {
     try {
       final region = regionCode ?? RecommendationsConfig.defaultRegionCode;
-      final apiKey = RecommendationsConfig.youtubeApiKey;
+      final workerUrl = RecommendationsConfig.cloudflareWorkerUrl;
 
-      _logDebug(
-        'YouTube API Key present: ${apiKey.isNotEmpty} (length: ${apiKey.length})',
+      _logDebug('Fetching YouTube shorts via Worker proxy');
+
+      // Use Cloudflare Worker endpoint (keeps API key secure on server)
+      final url = Uri.parse('$workerUrl/api/youtube/shorts').replace(
+        queryParameters: {
+          'maxResults': RecommendationsConfig.youtubeMaxResults.toString(),
+          'regionCode': region,
+        },
       );
-
-      if (apiKey.isEmpty) {
-        _logError('YouTube API key not configured');
-        return [];
-      }
-
-      // DIVERSITY SYSTEM: Rotate through different query strategies to get varied content
-      final queryStrategy = await _selectYouTubeQueryStrategy();
-      final url = await _buildYouTubeApiUrl(
-        apiKey: apiKey,
-        regionCode: region,
-        strategy: queryStrategy,
-        maxResults: RecommendationsConfig.youtubeMaxResults,
-      );
-
-      _logDebug(
-        'Fetching YouTube shorts using strategy: ${queryStrategy['type']}',
-      );
-      if (queryStrategy['searchQuery'] != null) {
-        _logDebug('  Search query: ${queryStrategy['searchQuery']}');
-      }
 
       final response = await http.get(url);
 
@@ -1015,27 +1000,18 @@ class RecommendationService {
     }
   }
 
-  /// Fetch YouTube audio tracks (music category, likely audio-only or lyric videos)
+  /// Fetch YouTube audio tracks via Cloudflare Worker proxy
   Future<List<LinkObject>> _fetchYouTubeMusicAudio(String? regionCode) async {
     try {
       final region = regionCode ?? RecommendationsConfig.defaultRegionCode;
-      final apiKey = RecommendationsConfig.youtubeApiKey;
+      final workerUrl = RecommendationsConfig.cloudflareWorkerUrl;
 
-      if (apiKey.isEmpty) return [];
-
+      // Use Cloudflare Worker endpoint (keeps API key secure on server)
       final url = Uri.parse(
-        '${RecommendationsConfig.youtubeApiBaseUrl}/search?'
-        'part=snippet&'
-        'type=video&'
-        'videoCategoryId=10&' // Music category
-        'q=official+audio|lyric+video&'
-        'order=viewCount&'
-        'regionCode=$region&'
-        'maxResults=20&'
-        'key=$apiKey',
-      );
+        '$workerUrl/api/youtube/music-audio',
+      ).replace(queryParameters: {'maxResults': '20', 'regionCode': region});
 
-      _logDebug('Fetching YouTube music audio...');
+      _logDebug('Fetching YouTube music audio via Worker proxy...');
       final response = await http.get(url);
 
       if (response.statusCode == 200) {
@@ -1207,25 +1183,21 @@ class RecommendationService {
     }
   }
 
-  /// Fetch YouTube music videos
+  /// Fetch YouTube music videos via Cloudflare Worker proxy
   Future<List<LinkObject>> _fetchYouTubeMusicVideos(String? regionCode) async {
     try {
       final region = regionCode ?? RecommendationsConfig.defaultRegionCode;
-      final apiKey = RecommendationsConfig.youtubeApiKey;
+      final workerUrl = RecommendationsConfig.cloudflareWorkerUrl;
 
-      if (apiKey.isEmpty) return [];
-
-      final url = Uri.parse(
-        '${RecommendationsConfig.youtubeApiBaseUrl}/videos?'
-        'part=snippet,contentDetails,statistics&'
-        'chart=mostPopular&'
-        'regionCode=$region&'
-        'videoCategoryId=10&' // Music category
-        'maxResults=${RecommendationsConfig.youtubeMaxResults}&'
-        'key=$apiKey',
+      // Use Cloudflare Worker endpoint (keeps API key secure on server)
+      final url = Uri.parse('$workerUrl/api/youtube/music-videos').replace(
+        queryParameters: {
+          'maxResults': RecommendationsConfig.youtubeMaxResults.toString(),
+          'regionCode': region,
+        },
       );
 
-      _logDebug('Fetching YouTube music videos...');
+      _logDebug('Fetching YouTube music videos via Worker proxy...');
       final response = await http.get(url);
 
       if (response.statusCode == 200) {
@@ -1280,12 +1252,13 @@ class RecommendationService {
   /// Metadata is cached for 3 days to avoid rate limiting (429 errors)
   ///
   /// NOTE: Genre filtering is NOT applied to remote config URLs yet.
-  /// See genre filtering section for implementation details.
+  /// TODO: Migrate to use Cloudflare Worker /api/vimeo/staff-picks endpoint
   Future<List<LinkObject>> _fetchVimeoMusicVideos() async {
     try {
+      // TODO: Update to use worker endpoint instead of direct API calls
       final accessToken = RecommendationsConfig.vimeoAccessToken;
       if (accessToken.isEmpty) {
-        _logError('Vimeo access token not configured');
+        _logError('Vimeo: Use Cloudflare Worker endpoint instead');
         return [];
       }
 
@@ -1466,11 +1439,13 @@ class RecommendationService {
 
   /// Fetch general Vimeo Staff Picks (all categories) for Gallery Wall
   /// Does not filter by music - includes comedy, art, experimental, etc.
+  /// TODO: Migrate to use Cloudflare Worker /api/vimeo/staff-picks endpoint
   Future<List<LinkObject>> _fetchVimeoStaffPicks({int maxResults = 50}) async {
     try {
+      // TODO: Update to use worker endpoint instead of direct API calls
       final accessToken = RecommendationsConfig.vimeoAccessToken;
       if (accessToken.isEmpty) {
-        _logError('Vimeo access token not configured');
+        _logError('Vimeo: Use Cloudflare Worker endpoint instead');
         return [];
       }
 
@@ -1590,13 +1565,15 @@ class RecommendationService {
   /// Fetch Vimeo Staff Picks music videos via API
   /// Uses Vimeo's Staff Picks channel with music category filters
   /// Returns fresh, high-quality curated music videos
+  /// TODO: Migrate to use Cloudflare Worker /api/vimeo/staff-picks endpoint
   Future<List<LinkObject>> _fetchVimeoStaffPicksMusicVideos({
     int maxResults = 50,
   }) async {
     try {
+      // TODO: Update to use worker endpoint instead of direct API calls
       final accessToken = RecommendationsConfig.vimeoAccessToken;
       if (accessToken.isEmpty) {
-        _logError('Vimeo access token not configured');
+        _logError('Vimeo: Use Cloudflare Worker endpoint instead');
         return [];
       }
 

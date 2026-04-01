@@ -889,9 +889,24 @@
                         action: 'loadFurnitureData'
                     }));
                 } else {
-                    console.warn('🪑 Flutter bridge not available, furniture persistence disabled');
+                    // Browser mode: Load from localStorage
+                    console.log('🪑 [BROWSER] Loading furniture from localStorage...');
                     resolved = true;
-                    resolve(null);
+                    try {
+                        const savedData = localStorage.getItem('mv3d_furniture_data');
+                        if (savedData) {
+                            const parsed = JSON.parse(savedData);
+                            console.log('🪑 [BROWSER] Successfully loaded furniture data from localStorage');
+                            resolve(parsed);
+                        } else {
+                            console.log('🪑 [BROWSER] No furniture data in localStorage');
+                            resolve(null);
+                        }
+                    } catch (e) {
+                        console.error('🪑 [BROWSER] Error loading furniture from localStorage:', e);
+                        resolve(null);
+                    }
+                    return;
                 }
                 
                 // Timeout after 5 seconds (increased from 2)
@@ -943,8 +958,18 @@
                         data: JSON.stringify(data)
                     }));
                 } else {
-                    console.warn('🪑 Flutter bridge not available, furniture persistence disabled');
-                    resolve(false);
+                    // Browser mode: Save to localStorage
+                    try {
+                        console.log('🪑 [BROWSER] Saving furniture to localStorage...');
+                        localStorage.setItem('mv3d_furniture_data', JSON.stringify(data));
+                        console.log('🪑 [BROWSER] Successfully saved furniture data to localStorage');
+                        resolve(true);
+                        return;
+                    } catch (e) {
+                        console.error('🪑 [BROWSER] Error saving furniture to localStorage:', e);
+                        resolve(false);
+                        return;
+                    }
                 }
                 
                 // Timeout after 2 seconds (reduced logging)

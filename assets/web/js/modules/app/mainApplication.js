@@ -1894,7 +1894,17 @@
             };
             
             // Helper: Animate object to home area position
-            this.animateObjectToHomeArea = (object, targetPosition) => {
+            this.animateObjectToHomeArea = async (object, targetPosition) => {
+                // CRITICAL: Remove from furniture first if object is on furniture
+                if (object.userData.furnitureId && this.furnitureManager) {
+                    console.log('🏠 Object is on furniture, removing before moving to home area...');
+                    const furnitureId = object.userData.furnitureId;
+                    const objectId = object.userData.id;
+                    
+                    await this.furnitureManager.removeObjectFromFurniture(furnitureId, objectId);
+                    console.log('🏠 Object removed from furniture');
+                }
+                
                 return new Promise((resolve) => {
                     const startPos = object.position.clone();
                     const targetPos = new THREE.Vector3(targetPosition.x, targetPosition.y, targetPosition.z);

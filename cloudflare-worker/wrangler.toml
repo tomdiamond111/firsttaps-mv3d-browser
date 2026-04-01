@@ -1,0 +1,18 @@
+# Cloudflare Workers configuration for FirstTaps MV3D Paste Service
+
+name = "firsttaps-paste"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+# KV namespace binding
+kv_namespaces = [
+  { binding = "FURNITURE_PASTES", id = "78712752f8d44fea8b32f01585bd9b3e", preview_id = "8f5cb8b82b334e38ac7df7d62ed89a23" }
+]
+
+# Routes (update with your domain)
+# routes = [
+#   { pattern = "paste.firsttaps.com/*", zone_name = "firsttaps.com" }
+# ]
+
+# Or use workers.dev subdomain
+# workers_dev = true

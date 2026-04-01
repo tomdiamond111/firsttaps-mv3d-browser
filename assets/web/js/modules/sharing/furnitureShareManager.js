@@ -21,18 +21,22 @@
             this.scene = app.scene;
             this.furnitureManager = app.furnitureManager;
             
-            // Base URL for the viewer - deployed on GitHub Pages
-            this.viewerBaseUrl = 'https://tomdiamond111.github.io/furniture-playlist-viewer/';
+            // Base URL for the furniture viewer (share.firsttaps.com)
+            this.viewerBaseUrl = 'https://share.firsttaps.com/';
+            
+            // Cloudflare Worker URL for paste service
+            this.cloudflareWorkerUrl = 'https://firsttaps-paste.firsttaps.workers.dev';
             
             console.log(`🔗 FurnitureShareManager created - viewer URL: ${this.viewerBaseUrl}`);
+            console.log(`📤 Using Cloudflare Workers KV for furniture sharing (reliable, fast CDN)`);
         }
 
         /**
          * Generate shareable URL for a specific furniture piece
          * @param {string} furnitureId - ID of furniture to share
-         * @returns {Object} - {url, warning, stats} or {error}
+         * @returns {Promise<Object>} - {url, warning, stats, service} or {error}
          */
-        shareFurniture(furnitureId) {
+        async shareFurniture(furnitureId) {
             try {
                 const furniture = this.furnitureManager.storageManager.getFurniture(furnitureId);
                 if (!furniture) {
@@ -59,9 +63,12 @@
                 const compressed = this.compressData(shareData);
                 console.log(`🗜️ Compression: ${JSON.stringify(shareData).length} → ${compressed.length} bytes`);
 
-                // Return just the compressed base64 data (Flutter will upload to GitHub Gist or Hastebin)
-                // The viewer will receive this base64 directly from the paste service
-                const shareUrl = compressed; // Just the base64, not the full URL
+                // Upload to paste service and get shareable URL
+                const uploadResult = await this.uploadWithFallback(compressed);
+                
+                if (!uploadResult.success) {
+                    return { error: uploadResult.error || 'Failed to upload share data' };
+                }
                 
                 // Warning if local media was excluded
                 const warning = shareData.excludedCount > 0 
@@ -69,9 +76,10 @@
                     : null;
 
                 return {
-                    url: shareUrl,
+                    url: uploadResult.url,
                     warning,
                     stats,
+                    service: uploadResult.service,
                     furnitureName: furniture.name,
                     furnitureType: furniture.type
                 };
@@ -80,6 +88,458 @@
                 console.error('❌ Error generating share link:', error);
                 return { error: error.message };
             }
+        }
+
+        /**
+         * Upload furniture data to GitHub Gist
+         * @param {string} content - Compressed furniture data
+         * @returns {Promise<Object>} - {success, url, service, error}
+         */
+        async uploadToGitHubGist(content) {
+            try {
+                console.log('📤 [SHARE] Trying GitHub Gist (authenticated)...');
+                console.log('📤 [SHARE] Data size:', content.length, 'bytes');
+
+                // Check if token is configured
+                if (!this.githubToken || this.githubToken === 'your_github_token_here' || this.githubToken.includes('%%')) {
+                    console.log('⚠️ [SHARE] GitHub token not configured, skipping...');
+                    return {
+                        success: false,
+                        error: 'GitHub token not configured',
+                        service: 'GitHub Gist'
+                    };
+                }
+
+                const response = await fetch('https://api.github.com/gists', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/vnd.github+json',
+                        'Authorization': `Bearer ${this.githubToken}`
+                    },
+                    body: JSON.stringify({
+                        description: 'FirstTaps MV3D Furniture Share',
+                        public: true,
+                        files: {
+                            'furniture.txt': { content: content }
+                        }
+                    })
+                });
+
+                console.log('📤 [SHARE] GitHub Gist response:', response.status);
+
+                if (response.status === 201) {
+                    const data = await response.json();
+                    const gistId = data.id;
+                    const shareUrl = `${this.viewerBaseUrl}?gist=${gistId}`;
+
+                    console.log('✅ [SHARE] GitHub Gist succeeded:', shareUrl);
+                    console.log('✅ [SHARE] Gist ID:', gistId);
+                    console.log('✅ [SHARE] Verify at: https://gist.github.com/' + gistId);
+                    
+                    return { 
+                        success: true, 
+                        url: shareUrl, 
+                        service: 'GitHub Gist',
+                        gistId: gistId 
+                    };
+                }
+
+                const errorText = await response.text();
+                console.log('⚠️ [SHARE] GitHub Gist failed: HTTP', response.status);
+                console.log('⚠️ [SHARE] Response body:', errorText);
+                
+                return {
+                    success: false,
+                    error: `HTTP ${response.status}: ${errorText}`,
+                    service: 'GitHub Gist'
+                };
+
+            } catch (error) {
+                console.log('⚠️ [SHARE] GitHub Gist error:', error.message);
+                return {
+                    success: false,
+                    error: error.toString(),
+                    service: 'GitHub Gist'
+                };
+            }
+        }
+
+        /**
+         * Upload furniture data to paste.gg (anonymous, free paste service)
+         * @param {string} content - Compressed furniture data
+         * @returns {Promise<Object>} - {success, url, service, error}
+         */
+        async uploadToPasteGG(content) {
+            try {
+                console.log('📤 [SHARE] Trying paste.gg...');
+                console.log('📤 [SHARE] Data size:', content.length, 'bytes');
+
+                // Create abort controller for timeout
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => {
+                    console.log('⏱️ [SHARE] Request timeout after 30 seconds');
+                    controller.abort();
+                }, 30000); // 30 second timeout
+
+                try {
+                    const response = await fetch('https://api.paste.gg/v1/pastes', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            name: 'FirstTaps Furniture Playlist',
+                            description: 'Shared furniture playlist from FirstTaps MV3D',
+                            visibility: 'unlisted',
+                            expires: null, // Never expires
+                            files: [{
+                                name: 'furniture.txt',
+                                content: {
+                                    format: 'text',
+                                    value: content
+                                }
+                            }]
+                        }),
+                        signal: controller.signal
+                    });
+
+                    clearTimeout(timeoutId);
+                    console.log('📤 [SHARE] paste.gg response:', response.status);
+
+                    if (response.status === 201) {
+                        const data = await response.json();
+                        const pasteId = data.result.id;
+                        const shareUrl = `${this.viewerBaseUrl}?pastegg=${pasteId}`;
+
+                        console.log('✅ [SHARE] paste.gg succeeded:', shareUrl);
+                        console.log('✅ [SHARE] Paste ID:', pasteId);
+                        console.log('✅ [SHARE] Verify at: https://paste.gg/' + pasteId);
+                        
+                        return { 
+                            success: true, 
+                            url: shareUrl, 
+                            service: 'paste.gg',
+                            pasteId: pasteId 
+                        };
+                    }
+
+                    const errorText = await response.text();
+                    console.log('⚠️ [SHARE] paste.gg failed: HTTP', response.status);
+                    console.log('⚠️ [SHARE] Response body:', errorText);
+                    
+                    return {
+                        success: false,
+                        error: `HTTP ${response.status}: ${errorText}`,
+                        service: 'paste.gg'
+                    };
+                } catch (fetchError) {
+                    clearTimeout(timeoutId);
+                    
+                    if (fetchError.name === 'AbortError') {
+                        console.log('⚠️ [SHARE] paste.gg timeout after 30 seconds');
+                        return {
+                            success: false,
+                            error: 'Upload timeout - please try again',
+                            service: 'paste.gg'
+                        };
+                    }
+                    
+                    throw fetchError; // Re-throw other errors to outer catch
+                }
+
+            } catch (error) {
+                console.log('⚠️ [SHARE] paste.gg error:', error.message);
+                console.error('⚠️ [SHARE] Full error:', error);
+                return {
+                    success: false,
+                    error: error.toString(),
+                    service: 'paste.gg'
+                };
+            }
+        }
+
+        /**
+         * Upload furniture data to dpaste.com (fallback option)
+         * @param {string} content - Compressed furniture data
+         * @returns {Promise<Object>} - {success, url, service, error}
+         */
+        async uploadToDPaste(content) {
+            try {
+                console.log('📤 [SHARE] Trying dpaste.com...');
+                console.log('📤 [SHARE] Data size:', content.length, 'bytes');
+
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+                try {
+                    const formData = new FormData();
+                    formData.append('content', content);
+                    formData.append('syntax', 'text');
+                    formData.append('expiry_days', '365'); // 1 year expiry
+
+                    const response = await fetch('https://dpaste.com/api/', {
+                        method: 'POST',
+                        body: formData,
+                        signal: controller.signal
+                    });
+
+                    clearTimeout(timeoutId);
+
+                    if (response.ok) {
+                        const pasteUrl = (await response.text()).trim();
+                        const pasteId = pasteUrl.split('/').pop().replace('.txt', '');
+                        const shareUrl = `${this.viewerBaseUrl}?paste=${pasteId}`;
+
+                        console.log('✅ [SHARE] dpaste.com succeeded:', shareUrl);
+                        return { 
+                            success: true, 
+                            url: shareUrl, 
+                            service: 'dpaste.com',
+                            pasteId: pasteId 
+                        };
+                    }
+
+                    return {
+                        success: false,
+                        error: `HTTP ${response.status}`,
+                        service: 'dpaste.com'
+                    };
+                } catch (fetchError) {
+                    clearTimeout(timeoutId);
+                    if (fetchError.name === 'AbortError') {
+                        return {
+                            success: false,
+                            error: 'Upload timeout',
+                            service: 'dpaste.com'
+                        };
+                    }
+                    throw fetchError;
+                }
+            } catch (error) {
+                console.log('⚠️ [SHARE] dpaste.com error:', error.message);
+                return {
+                    success: false,
+                    error: error.toString(),
+                    service: 'dpaste.com'
+                };
+            }
+        }
+
+        /**
+         * Upload furniture data to Cloudflare Workers KV (primary option)
+         * @param {string} content - Compressed furniture data
+         * @returns {Promise<Object>} - {success, url, service, error}
+         */
+        async uploadToCloudflare(content) {
+            try {
+                console.log('📤 [SHARE] Trying Cloudflare Workers KV...');
+                console.log('📤 [SHARE] Data size:', content.length, 'bytes');
+
+                // Check if worker URL is configured
+                if (!this.cloudflareWorkerUrl || this.cloudflareWorkerUrl === 'YOUR_WORKER_URL_HERE') {
+                    console.log('⚠️ [SHARE] Cloudflare Worker URL not configured, skipping...');
+                    return {
+                        success: false,
+                        error: 'Cloudflare Worker URL not configured',
+                        service: 'Cloudflare Workers'
+                    };
+                }
+
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
+                try {
+                    const response = await fetch(`${this.cloudflareWorkerUrl}/api/paste`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'text/plain'
+                        },
+                        body: content,
+                        signal: controller.signal
+                    });
+
+                    clearTimeout(timeoutId);
+
+                    if (response.ok) {
+                        const result = await response.json();
+                        console.log('📦 [SHARE] Cloudflare response:', result);
+                        
+                        if (result.success && result.id) {
+                            const shareUrl = `${this.viewerBaseUrl}?cf=${result.id}`;
+
+                            console.log('✅ [SHARE] Cloudflare succeeded:', shareUrl);
+                            console.log('📋 [SHARE] Paste ID:', result.id);
+                            console.log('📋 [SHARE] Data size:', result.size, 'bytes');
+                            return { 
+                                success: true, 
+                                url: shareUrl, 
+                                service: 'Cloudflare Workers',
+                                pasteId: result.id 
+                            };
+                        }
+                    }
+
+                    const errorText = await response.text();
+                    console.log('⚠️ [SHARE] Cloudflare failed: HTTP', response.status);
+                    console.log('⚠️ [SHARE] Response:', errorText);
+
+                    return {
+                        success: false,
+                        error: `HTTP ${response.status}`,
+                        service: 'Cloudflare Workers'
+                    };
+                } catch (fetchError) {
+                    clearTimeout(timeoutId);
+                    if (fetchError.name === 'AbortError') {
+                        return {
+                            success: false,
+                            error: 'Upload timeout',
+                            service: 'Cloudflare Workers'
+                        };
+                    }
+                    throw fetchError;
+                }
+            } catch (error) {
+                console.log('⚠️ [SHARE] Cloudflare error:', error.message);
+                return {
+                    success: false,
+                    error: error.toString(),
+                    service: 'Cloudflare Workers'
+                };
+            }
+        }
+
+        /**
+         * Upload furniture data to rentry.co (fallback option - DEPRECATED: requires access code)
+         * @param {string} content - Compressed furniture data
+         * @returns {Promise<Object>} - {success, url, service, error}
+         */
+        async uploadToRentry(content) {
+            try {
+                console.log('📤 [SHARE] Trying rentry.co...');
+                console.log('📤 [SHARE] Data size:', content.length, 'bytes');
+
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 30000);
+
+                try {
+                    // rentry.co API requires URL-encoded form data, not FormData
+                    const params = new URLSearchParams();
+                    params.append('text', content);
+                    
+                    const response = await fetch('https://rentry.co/api/new', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded'
+                        },
+                        body: params.toString(),
+                        signal: controller.signal
+                    });
+
+                    clearTimeout(timeoutId);
+
+                    if (response.ok) {
+                        const responseText = await response.text();
+                        console.log('📦 [SHARE] rentry.co raw response:', responseText);
+                        
+                        try {
+                            const result = JSON.parse(responseText);
+                            console.log('📦 [SHARE] rentry.co parsed JSON:', JSON.stringify(result, null, 2));
+                            
+                            if (result.url || result.edit_code) {
+                                const pasteId = result.url ? result.url.split('/').pop() : result.edit_code;
+                                const shareUrl = `${this.viewerBaseUrl}?rentry=${pasteId}`;
+
+                                console.log('✅ [SHARE] rentry.co succeeded:', shareUrl);
+                                console.log('📋 [SHARE] Paste ID:', pasteId);
+                                console.log('📋 [SHARE] Full result object:', result);
+                                return { 
+                                    success: true, 
+                                    url: shareUrl, 
+                                    service: 'rentry.co',
+                                    pasteId: pasteId 
+                                };
+                            } else {
+                                console.error('❌ [SHARE] rentry.co response missing url/edit_code:', result);
+                            }
+                        } catch (parseError) {
+                            console.error('❌ [SHARE] rentry.co response not JSON:', parseError);
+                            console.error('❌ [SHARE] Response was:', responseText.substring(0, 500));
+                        }
+                    }
+
+                    return {
+                        success: false,
+                        error: `HTTP ${response.status}`,
+                        service: 'rentry.co'
+                    };
+                } catch (fetchError) {
+                    clearTimeout(timeoutId);
+                    if (fetchError.name === 'AbortError') {
+                        return {
+                            success: false,
+                            error: 'Upload timeout',
+                            service: 'rentry.co'
+                        };
+                    }
+                    throw fetchError;
+                }
+            } catch (error) {
+                console.log('⚠️ [SHARE] rentry.co error:', error.message);
+                return {
+                    success: false,
+                    error: error.toString(),
+                    service: 'rentry.co'
+                };
+            }
+        }
+
+        /**
+         * Upload furniture data with multi-service fallback
+         * @param {string} content - Compressed furniture data
+         * @returns {Promise<Object>} - {success, url, service, error}
+         */
+        async uploadWithFallback(content) {
+            console.log('📤 [SHARE] Starting upload with multi-service fallback...');
+            console.log('📤 [SHARE] Data size:', content.length, 'bytes');
+
+            // Try services in priority order
+            // 1. Cloudflare Workers KV (fast, reliable, free CDN)
+            // 2. paste.gg (anonymous, free, but can be slow)
+            // NOTE: rentry.co removed - requires access codes as of 2026
+            const services = [
+                { name: 'Cloudflare Workers', fn: () => this.uploadToCloudflare(content) },
+                { name: 'paste.gg', fn: () => this.uploadToPasteGG(content) }
+            ];
+
+            let lastError = '';
+            
+            for (const service of services) {
+                try {
+                    console.log(`📤 [SHARE] Trying ${service.name}...`);
+                    const result = await service.fn();
+                    
+                    if (result.success && result.url) {
+                        console.log(`✅ [SHARE] ${service.name} succeeded!`);
+                        return result;
+                    }
+                    
+                    lastError = result.error || 'Unknown error';
+                    console.log(`⚠️ [SHARE] ${service.name} failed: ${lastError}`);
+                } catch (error) {
+                    lastError = error.message;
+                    console.log(`⚠️ [SHARE] ${service.name} exception: ${lastError}`);
+                }
+            }
+
+            // All services failed
+            console.error('❌ [SHARE] All paste services failed');
+            return {
+                success: false,
+                error: `All paste services unavailable. Last error: ${lastError}`,
+                service: 'None'
+            };
         }
 
         /**

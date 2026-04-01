@@ -8,11 +8,11 @@ let currentWorld = 'green-plane';
 let searchDebounceTimer = null;
 let selectedPlatforms = new Set(['youtube', 'deezer', 'vimeo', 'soundcloud', 'dailymotion']);
 
-// API Configuration
+// API Configuration - Uses Cloudflare Worker for secure API key management
 const API_CONFIG = {
     youtube: {
-        apiKey: 'AIzaSyDwb4D3YhbdAYPHWYikUUGYnw8F5V83fqc', // Your existing key from mobile app
-        baseUrl: 'https://www.googleapis.com/youtube/v3/search'
+        // YouTube API calls are proxied through Cloudflare Worker
+        workerUrl: 'https://firsttaps-paste.firsttaps.workers.dev/api/youtube/music-audio'
     },
     deezer: {
         baseUrl: 'https://api.deezer.com/search'

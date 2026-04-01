@@ -89,6 +89,17 @@ $coreModuleOrder = @(
     # Service systems (depends on core)
     'modules\services\faviconService.js',
     
+    # Content recommendation services (depends on core only)
+    'modules\services\recommendationsConfig.js',
+    'modules\services\recommendationsStorage.js',
+    'modules\services\contentPreferenceLearningService.js',
+    'modules\services\recommendationService.js',
+    'modules\services\recommendationContentManager.js',
+    'modules\services\recommendationSystemInit.js',
+    
+    # Media feedback system (depends on ContentPreferenceLearningService)
+    'modules\content\mediaFeedbackManager.js',
+    
     # Interaction systems (depends on core)
     'modules\interaction\focusZoneManager.js',
     'modules\interaction\inputManager.js',
@@ -122,6 +133,12 @@ $coreModuleOrder = @(
     
     # Phone number utilities (standalone utility for SMS/contact functionality)
     'modules\utils\phoneUtils.js',
+    
+    # Metadata cache (localStorage-based caching for platform metadata/thumbnails)
+    'modules\utils\metadataCache.js',
+    
+    # Version manager (app version tracking and update notifications)
+    'modules\utils\versionManager.js',
     
     # URL processing systems (new functionality)
     'modules\url\urlProcessor.js',
@@ -464,7 +481,19 @@ Write-Host "  Total Size: $([math]::Round($coreSize + $premiumSize, 2)) KB" -For
 $htmlFile = "$rootDir\..\index2.html"
 if (Test-Path $htmlFile) {
     Write-Host "" -ForegroundColor White
-    Write-Host "Updating HTML with new timestamps..." -ForegroundColor Cyan
+    Write-Host "Updating HTML with new timestamps and version..." -ForegroundColor Cyan
+    
+    # Read the version from versionManager.js
+    $versionManagerPath = "$rootDir\modules\utils\versionManager.js"
+    $currentVersion = "1.2.19" # Default fallback
+    
+    if (Test-Path $versionManagerPath) {
+        $versionManagerContent = Get-Content $versionManagerPath -Raw
+        if ($versionManagerContent -match "const CURRENT_APP_VERSION = '([^']+)'") {
+            $currentVersion = $Matches[1]
+            Write-Host "  Detected version from versionManager.js: $currentVersion" -ForegroundColor Yellow
+        }
+    }
     
     # Read the HTML content
     $htmlContent = Get-Content $htmlFile -Raw
@@ -476,12 +505,16 @@ if (Test-Path $htmlFile) {
     # Also handle legacy single bundle references (in case they exist)
     $htmlContent = $htmlContent -replace 'bundle_modular_production\.js\?v=\d{8}_\d{4}', "bundle_core_production.js?v=$timestamp"
     
+    # Update the EXPECTED_VERSION in the inline version check script
+    $htmlContent = $htmlContent -replace "const EXPECTED_VERSION = '[^']*'", "const EXPECTED_VERSION = '$currentVersion'"
+    
     # Write the updated HTML content back
     $htmlContent | Out-File -FilePath $htmlFile -Encoding UTF8 -NoNewline
     
-    Write-Host "HTML file updated with new timestamps" -ForegroundColor Green
+    Write-Host "HTML file updated with new timestamps and version" -ForegroundColor Green
     Write-Host "  Core bundle timestamp: $timestamp" -ForegroundColor Yellow
     Write-Host "  Premium bundle timestamp: $timestamp" -ForegroundColor Yellow
+    Write-Host "  Expected version: $currentVersion" -ForegroundColor Yellow
 } else {
     Write-Host "WARNING: HTML file not found at $htmlFile" -ForegroundColor Red
 }
@@ -495,5 +528,8 @@ if ($Test) {
 
 Write-Host "" -ForegroundColor White
 Write-Host "Split Bundle Build Complete!" -ForegroundColor Green
-Write-Host "✓ Core bundle: Ready for all users" -ForegroundColor Green
-Write-Host "✓ Premium bundle: Loads only when premium features needed" -ForegroundColor Green
+Write-Host "[OK] Core bundle: Ready for all users" -ForegroundColor Green
+Write-Host "[OK] Premium bundle: Loads only when premium features needed" -ForegroundColor Green
+
+# Explicitly exit with success code
+exit 0

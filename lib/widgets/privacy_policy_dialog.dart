@@ -4,18 +4,13 @@ import 'dart:html' as html;
 class PrivacyPolicyDialog extends StatelessWidget {
   const PrivacyPolicyDialog({super.key});
 
+  /// Show the privacy policy dialog
+  /// Note: Iframe pointer-events management should be handled by the calling screen
   static void show(BuildContext context) {
-    // Disable pointer events on iframe to allow dialog interaction
-    final iframe = html.document.querySelector('iframe');
-    iframe?.style.pointerEvents = 'none';
-
     showDialog(
       context: context,
       builder: (context) => const PrivacyPolicyDialog(),
-    ).then((_) {
-      // Re-enable pointer events on iframe when dialog closes
-      iframe?.style.pointerEvents = 'auto';
-    });
+    );
   }
 
   @override

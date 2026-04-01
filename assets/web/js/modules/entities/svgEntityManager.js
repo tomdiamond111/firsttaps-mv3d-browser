@@ -155,6 +155,10 @@ class SVGEntityManager {
         this.uiManager.initialize(); // Use UI manager instead of createScoreUI()
         this.startUpdateLoop();
         
+        // Expose UI manager globally for external access
+        window.entityUIManager = this.uiManager;
+        console.log('🌐 Exposed entityUIManager globally');
+        
         // Pre-load entity collections for higher levels
         this.preloadEntityCollections();
         
@@ -738,8 +742,7 @@ class SVGEntityManager {
             entity.entityInstance.animateClick();
         }
         
-        // Audio feedback (optional)
-        this.playClickSound(entity.type);
+        // Audio feedback is already played in showClickFeedback - no need to duplicate
         
         // console.log(`🎮 ${entity.type} clicked! +${points} points (Total: ${this.totalPoints})`);
         
@@ -1134,6 +1137,9 @@ class SVGEntityManager {
                 nextSpawnTime: this.nextSpawnTime,
                 hasShownPremiumPopup: this.hasShownPremiumPopup
             });
+            
+            // Ensure UI update is called immediately after data sync
+            this.uiManager.updateScoreUI();
         }
     }
     
@@ -1166,7 +1172,7 @@ class SVGEntityManager {
             try {
                 this.updateEntities();
                 this.checkSpawning();
-                this.checkPromotionalSpawning(); // Check for promotional entities
+                // this.checkPromotionalSpawning(); // BROWSER: Disabled - no premium store available
                 
                 // Update treasure boxes if manager is available
                 if (this.app.treasureBoxManager && typeof this.app.treasureBoxManager.update === 'function') {

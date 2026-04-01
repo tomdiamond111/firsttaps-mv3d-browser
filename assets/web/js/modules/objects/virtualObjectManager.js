@@ -36,26 +36,60 @@
                     // Look up persisted position like regular file objects do
                     let position = { x: 0, y: 0, z: 0 };
                     
-                    // Check if app object has persisted position data (check for null, not just undefined)
-                    const hasPersistedPosition = (appData.x != null && appData.z != null);
+                    // BROWSER-ONLY PERSISTENCE: First check localStorage (for browser-only mode)
+                    let savedPosition = null;
+                    if (window.browserObjectStorage) {
+                        const packageId = appData.packageName || appData.id;
+                        savedPosition = window.browserObjectStorage.load(packageId);
+                        
+                        if (savedPosition) {
+                            console.log(`💾 [BROWSER] Found saved position for ${appData.name}:`, savedPosition);
+                        }
+                    }
+                    
+                    // Check if app object has persisted position data (from Dart or localStorage)
+                    // Priority: 1. localStorage (browser mode), 2. appData (Flutter mode)
+                    const hasPersistedPosition = savedPosition || (appData.x != null && appData.z != null);
                     
                     if (hasPersistedPosition) {
-                        // Use persisted position like regular file objects
-                        position.x = appData.x;
-                        position.z = appData.z;
-                        
-                        // For Y position, preserve stacked positions or start at ground level
-                        // Calculate expected ground Y dynamically based on object geometry
-                        let expectedGroundY = this.calculateExpectedGroundY(appData);
-                        
-                        const wasOriginallyStacked = appData.y && appData.y > (expectedGroundY + 0.1);
-                        
-                        if (wasOriginallyStacked) {
-                            position.y = appData.y; // Preserve original Y for stacking calculation
-                            console.log(`App ${appData.name}: Using persisted stacked position Y=${appData.y}`);
+                        // Use persisted position (localStorage takes priority for browser mode)
+                        if (savedPosition) {
+                            position.x = savedPosition.x;
+                            position.z = savedPosition.z;
+                            
+                            // Check if this was a stacked or furniture-seated object
+                            const expectedGroundY = this.calculateExpectedGroundY(appData);
+                            const wasOriginallyStacked = savedPosition.y && savedPosition.y > (expectedGroundY + 0.1);
+                            
+                            if (wasOriginallyStacked) {
+                                position.y = savedPosition.y;
+                                console.log(`💾 [BROWSER] App ${appData.name}: Using saved stacked position Y=${savedPosition.y}`);
+                            } else {
+                                position.y = 0; // Ground level, will be recalculated
+                                console.log(`💾 [BROWSER] App ${appData.name}: Using saved XZ position (${savedPosition.x}, ${savedPosition.z}), Y will be recalculated`);
+                            }
+                            
+                            // Restore furniture seating if saved
+                            if (savedPosition.furnitureId) {
+                                appData.furnitureId = savedPosition.furnitureId;
+                                appData.furnitureSlotIndex = savedPosition.slotIndex;
+                                console.log(`💾 [BROWSER] Restored furniture seating: ${savedPosition.furnitureId} slot ${savedPosition.slotIndex}`);
+                            }
                         } else {
-                            position.y = 0; // Start at ground level, proper Y will be calculated by positioning logic
-                            console.log(`App ${appData.name}: Using persisted XZ position (${appData.x}, ${appData.z}), Y will be recalculated`);
+                            // Use position from appData (Flutter mode)
+                            position.x = appData.x;
+                            position.z = appData.z;
+                            
+                            const expectedGroundY = this.calculateExpectedGroundY(appData);
+                            const wasOriginallyStacked = appData.y && appData.y > (expectedGroundY + 0.1);
+                            
+                            if (wasOriginallyStacked) {
+                                position.y = appData.y;
+                                console.log(`App ${appData.name}: Using persisted stacked position Y=${appData.y}`);
+                            } else {
+                                position.y = 0;
+                                console.log(`App ${appData.name}: Using persisted XZ position (${appData.x}, ${appData.z}), Y will be recalculated`);
+                            }
                         }
                         
                         console.log(`App ${appData.name}: Using persisted position:`, {x: position.x, y: position.y, z: position.z});

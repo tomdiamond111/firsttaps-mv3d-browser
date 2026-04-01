@@ -32,23 +32,15 @@ class MusicPreferencesDialog extends StatefulWidget {
   ];
 
   /// Show the preferences dialog
+  /// Note: Iframe pointer-events management should be handled by the calling screen
   static Future<void> show(BuildContext context) async {
-    // Disable pointer events on iframe to allow dialog interaction
-    final iframe = html.document.querySelector('iframe');
-    iframe?.style.pointerEvents = 'none';
-
-    try {
-      await showDialog(
-        context: context,
-        barrierDismissible: true,
-        builder: (dialogContext) => MusicPreferencesDialog(
-          onClose: () => Navigator.of(dialogContext).pop(),
-        ),
-      );
-    } finally {
-      // Re-enable pointer events on iframe
-      iframe?.style.pointerEvents = 'auto';
-    }
+    await showDialog(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => MusicPreferencesDialog(
+        onClose: () => Navigator.of(dialogContext).pop(),
+      ),
+    );
   }
 
   /// Load selected genres from SharedPreferences
@@ -359,19 +351,62 @@ class _MusicPreferencesDialogState extends State<MusicPreferencesDialog> {
                             _buildInfoRow(
                               '📺',
                               'Gallery Wall',
-                              'Videos from ALL selected genres',
+                              'Video clips from YouTube, Vimeo, DailyMotion, TikTok, Instagram',
                             ),
                             const SizedBox(height: 6),
                             _buildInfoRow(
-                              '🎵',
-                              'Riser & Stage',
-                              'ONE rotating genre per day',
+                              '🎸',
+                              'Riser',
+                              'Music Videos from YouTube, Vimeo, DailyMotion',
+                            ),
+                            const SizedBox(height: 6),
+                            _buildInfoRow(
+                              '🎤',
+                              'Small Stage',
+                              'Audio Tracks from YouTube, Spotify, Deezer, SoundCloud',
+                            ),
+                            const SizedBox(height: 6),
+                            _buildInfoRow(
+                              '🎬',
+                              'Amphitheatre',
+                              'YouTube Shorts, TikToks, Instagram Reels',
                             ),
                             const SizedBox(height: 6),
                             _buildInfoRow(
                               '📚',
                               'Bookshelf',
                               'Your most played content',
+                            ),
+                            const SizedBox(height: 12),
+                            Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: Colors.amber.shade50,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: Colors.amber.shade300,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    Icons.refresh,
+                                    color: Colors.amber.shade800,
+                                    size: 18,
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      'Refresh Content by Double-tapping Furniture in Closeup Mode',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.amber.shade900,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ),

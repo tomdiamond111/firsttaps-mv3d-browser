@@ -104,12 +104,18 @@
             overlay.appendChild(menu);
             document.body.appendChild(overlay);
             
-            // Handle button clicks
+            // Handle button clicks (async to properly await actions)
             menu.querySelectorAll('.menu-btn').forEach(btn => {
-                btn.onclick = () => {
+                btn.onclick = async () => {
                     const action = btn.dataset.action;
-                    this.handleObjectAction(action, object, objectId, objectName);
-                    document.body.removeChild(overlay);
+                    // Don't remove overlay immediately for async actions
+                    if (action === 'moveToHome' || action === 'delete') {
+                        document.body.removeChild(overlay);
+                        await this.handleObjectAction(action, object, objectId, objectName);
+                    } else {
+                        this.handleObjectAction(action, object, objectId, objectName);
+                        document.body.removeChild(overlay);
+                    }
                 };
             });
             
@@ -439,7 +445,10 @@
                     return;
                 }
                 
-                const result = this.app.shareManager.shareFurniture(furnitureId);
+                // Show uploading toast
+                this.showToast('Uploading furniture data...', 'info');
+                
+                const result = await this.app.shareManager.shareFurniture(furnitureId);
                 
                 if (result.error) {
                     this.showToast(`Error: ${result.error}`, 'error');
@@ -462,6 +471,9 @@
             const overlay = this.createOverlay();
             const menu = this.createMenuContainer();
             
+            // Escape single quotes in URL for onclick handler
+            const escapedUrl = shareResult.url.replace(/'/g, "\\'");
+            
             menu.innerHTML = `
                 <div style="padding: 20px;">
                     <h3 style="margin: 0 0 15px 0; color: #333; font-size: 18px;">Share ${furnitureName}</h3>
@@ -472,16 +484,24 @@
                             ${shareResult.stats.totalObjects} objects<br>
                             ${shareResult.stats.youtubeObjects} YouTube<br>
                             ${shareResult.stats.vimeoObjects} Vimeo<br>
-                            ${shareResult.stats.webLinkObjects} web links
+                            ${shareResult.stats.webLinkObjects} web links<br>
+                            <span style="color: #4CAF50;">✓ Uploaded to ${shareResult.service}</span>
                         </div>
                         ${shareResult.warning ? `
                             <div style="color: #ff6b6b; font-size: 12px; margin-top: 5px;">⚠️ ${shareResult.warning}</div>
                         ` : ''}
                     </div>
                     
-                    <textarea style="width: 100%; height: 100px; font-family: monospace; font-size: 11px; padding: 8px; border: 1px solid #ddd; border-radius: 4px; resize: vertical;" readonly>${shareResult.url}</textarea>
+                    <div style="background: #e8f5e9; padding: 10px; border-radius: 4px; margin-bottom: 15px; word-break: break-all;">
+                        <div style="font-size: 12px; color: #666; margin-bottom: 5px;">Share URL:</div>
+                        <a href="${shareResult.url}" target="_blank" style="color: #2196F3; text-decoration: none; font-size: 13px;">${shareResult.url}</a>
+                    </div>
                     
-                    <button class="menu-btn" onclick="navigator.clipboard.writeText('${shareResult.url.replace(/'/g, "\\'")}').then(() => alert('Copied to clipboard!'))">
+                    <button class="menu-btn" onclick="window.open('${escapedUrl}', '_blank')">
+                        <span class="menu-icon">🔗</span> Open in New Tab
+                    </button>
+                    
+                    <button class="menu-btn" onclick="navigator.clipboard.writeText('${escapedUrl}').then(() => alert('Copied to clipboard!'))">
                         <span class="menu-icon">📋</span> Copy to Clipboard
                     </button>
                     
@@ -700,9 +720,8 @@
         getObjectId(object) {
             if (!object || !object.userData) return null;
             
-            return object.userData.furnitureId || 
-                   object.userData.id || 
-                   object.uuid;
+            // Return the object's own ID, NOT the furnitureId (which is just location metadata)
+            return object.userData.id || object.uuid;
         }
 
         /**

@@ -19,6 +19,7 @@
             this.buttons = {
                 refresh: null,
                 back: null,
+                done: null,
                 info: null
             };
 
@@ -40,7 +41,7 @@
             this.container.style.cssText = `
                 position: fixed;
                 bottom: 100px;
-                right: 20px;
+                right: 90px;
                 display: none;
                 flex-direction: column;
                 gap: 12px;
@@ -52,6 +53,14 @@
             this.buttons.refresh = this.createButton('🔄', 'Refresh Content', () => {
                 this.handleRefreshClick();
             });
+
+            // Create done button (for exiting move mode)
+            this.buttons.done = this.createButton('✓', 'Done Moving', () => {
+                this.handleDoneClick();
+            });
+            // Style done button with green background
+            this.buttons.done.style.background = 'rgba(76, 175, 68, 0.9)';
+            this.buttons.done.style.display = 'none'; // Hidden by default, shown during move mode
 
             // Create back button
             this.buttons.back = this.createButton('⏮️', 'Previous Playlist', () => {
@@ -67,6 +76,7 @@
 
             // Add buttons to container
             this.container.appendChild(this.buttons.refresh);
+            this.container.appendChild(this.buttons.done);
             this.container.appendChild(this.buttons.back);
             // Info button removed: this.container.appendChild(this.buttons.info);
 
@@ -188,6 +198,17 @@
 
             // Update button states
             this.updateButtonStates();
+            
+            // Show Done button if we're in move mode (object is being moved)
+            // Hide refresh button during move mode
+            if (window.app && window.app.stateManager && window.app.stateManager.movingObject) {
+                this.buttons.done.style.display = 'flex';
+                this.buttons.refresh.style.display = 'none';
+                console.log('✓ Showing Done button - furniture is being moved');
+            } else {
+                this.buttons.done.style.display = 'none';
+                this.buttons.refresh.style.display = 'flex';
+            }
 
             // Show tutorial hint if requested and not shown before
             if (showTutorialHint && !localStorage.getItem('furniture_controls_tutorial_shown')) {
@@ -419,6 +440,27 @@
                 this.buttons.back.querySelector('.btn-emoji').textContent = '⏮️';
                 this.updateButtonStates();
             }, 1000);
+        }
+
+        /**
+         * Handle done button click (exit move mode)
+         */
+        handleDoneClick() {
+            console.log('✓ Done button clicked - exiting move mode');
+            
+            // Call moveManager to end the object move
+            if (window.app && window.app.moveManager) {
+                window.app.moveManager.handleObjectMoveEnd();
+                this.showNotification('Move completed', 'success', 1500);
+            } else {
+                console.error('❌ MoveManager not available');
+                this.showNotification('Error: Move manager not found', 'error');
+            }
+            
+            // Hide the done button after completing move
+            if (this.buttons.done) {
+                this.buttons.done.style.display = 'none';
+            }
         }
 
         /**

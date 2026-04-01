@@ -33,6 +33,9 @@ class OptionsMenuWidget extends StatelessWidget {
   final VoidCallback? onShowCreateFurniture;
   final VoidCallback? onShowFurnitureManager;
   final VoidCallback? onImportFurniture;
+  final VoidCallback? onShowInstructions;
+  final VoidCallback? onShowMusicPreferences;
+  final VoidCallback? onShowPrivacyPolicy;
 
   // Utility functions
   final String Function(String) getWorldDisplayName;
@@ -64,6 +67,9 @@ class OptionsMenuWidget extends StatelessWidget {
     this.onShowCreateFurniture,
     this.onShowFurnitureManager,
     this.onImportFurniture,
+    this.onShowInstructions,
+    this.onShowMusicPreferences,
+    this.onShowPrivacyPolicy,
     required this.getWorldDisplayName,
   });
 
@@ -99,9 +105,23 @@ class OptionsMenuWidget extends StatelessWidget {
                           ),
                         ),
                         const Spacer(),
-                        IconButton(
-                          onPressed: () => Navigator.pop(context),
-                          icon: const Icon(Icons.close, color: Colors.white),
+                        Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(24),
+                            onTap: () {
+                              print('🔘 Close button tapped');
+                              Navigator.of(context).pop();
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(8),
+                              child: const Icon(
+                                Icons.close,
+                                color: Colors.white,
+                                size: 24,
+                              ),
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -131,30 +151,9 @@ class OptionsMenuWidget extends StatelessWidget {
                       ),
                       onTap: () {
                         Navigator.pop(context);
-                        WelcomeInstructionsDialog.show(context);
-                      },
-                    ),
-
-                    const WhiteDividerWidget(),
-
-                    // 2. Premium Content Store
-                    ListTile(
-                      leading: const Icon(Icons.stars, color: Colors.amber),
-                      title: const Text(
-                        'Premium Content Store',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      trailing: const Icon(
-                        Icons.arrow_forward_ios,
-                        size: 16,
-                        color: Colors.white,
-                      ),
-                      onTap: () {
-                        Navigator.pop(context);
-                        onShowPremiumStore();
+                        if (onShowInstructions != null) {
+                          onShowInstructions!();
+                        }
                       },
                     ),
 
@@ -201,9 +200,11 @@ class OptionsMenuWidget extends StatelessWidget {
                         size: 16,
                         color: Colors.white,
                       ),
-                      onTap: () async {
+                      onTap: () {
                         Navigator.pop(context);
-                        await MusicPreferencesDialog.show(context);
+                        if (onShowMusicPreferences != null) {
+                          onShowMusicPreferences!();
+                        }
                       },
                     ),
                     const WhiteDividerWidget(),
@@ -232,35 +233,6 @@ class OptionsMenuWidget extends StatelessWidget {
                     ),
 
                     const WhiteDividerWidget(),
-
-                    // 4.6. Add Furniture
-                    if (onShowCreateFurniture != null)
-                      ListTile(
-                        leading: const Icon(Icons.weekend, color: Colors.blue),
-                        title: const Text(
-                          'Add Furniture',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        subtitle: const Text(
-                          'Add furniture to organize media',
-                          style: TextStyle(color: Colors.white70, fontSize: 12),
-                        ),
-                        trailing: const Icon(
-                          Icons.arrow_forward_ios,
-                          size: 16,
-                          color: Colors.white,
-                        ),
-                        onTap: () {
-                          Navigator.pop(context);
-                          onShowCreateFurniture!();
-                        },
-                      ),
-
-                    if (onShowCreateFurniture != null)
-                      const WhiteDividerWidget(),
 
                     // 4.7. Furniture Manager
                     if (onShowFurnitureManager != null)
@@ -346,7 +318,9 @@ class OptionsMenuWidget extends StatelessWidget {
                       ),
                       onTap: () {
                         Navigator.pop(context);
-                        PrivacyPolicyDialog.show(context);
+                        if (onShowPrivacyPolicy != null) {
+                          onShowPrivacyPolicy!();
+                        }
                       },
                     ),
 

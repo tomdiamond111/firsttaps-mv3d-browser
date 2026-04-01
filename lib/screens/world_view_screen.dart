@@ -7,12 +7,14 @@ import 'package:url_launcher/url_launcher.dart';
 import 'music_search_screen.dart';
 import '../widgets/options_menu_widget.dart';
 import '../widgets/add_content_menu_widget.dart';
-import '../widgets/welcome_instructions_dialog.dart';
 import '../widgets/music_preferences_dialog.dart';
+import '../widgets/privacy_policy_dialog.dart';
 import '../utils/three_js_utils.dart';
 import '../helpers/demo_content_with_recommendations_helper.dart';
 import '../services/remote_config_service.dart';
 import '../services/recommendation_service.dart';
+import '../services/persistence_service.dart';
+import '../models/file_model.dart';
 
 /// Three.js World View Screen for Browser
 /// Uses iframe to host Three.js environment with HTML-based UI
@@ -48,6 +50,7 @@ class _WorldViewScreenState extends State<WorldViewScreen> {
 
   // World ready state
   bool _isWorldReady = false;
+  bool _hasShownWelcomeFlow = false; // Prevent duplicate welcome dialogs
 
   @override
   void initState() {
@@ -97,7 +100,7 @@ class _WorldViewScreenState extends State<WorldViewScreen> {
   void _registerIframe() {
     // Create iframe element
     _iframeElement = html.IFrameElement()
-      ..src = 'assets/web/index2.html'
+      ..src = 'assets/assets/web/index2.html'
       ..style.border = 'none'
       ..style.width = '100%'
       ..style.height = '100%'
@@ -251,10 +254,7 @@ class _WorldViewScreenState extends State<WorldViewScreen> {
     // Load saved world preference and apply it
     _loadAndApplySavedWorld();
 
-    // Schedule demo content creation after a delay to ensure everything is loaded
-    Future.delayed(const Duration(seconds: 2), _initializeDemoContent);
-
-    // Check and show welcome instructions and music preferences on first launch
+    // Check and show music preferences FIRST, then initialize demo content
     _checkAndShowWelcomeInstructions();
   }
 
@@ -345,6 +345,13 @@ class _WorldViewScreenState extends State<WorldViewScreen> {
   /// Check and show welcome instructions and music preferences on first launch
   /// Waits for 3D world to be ready, then shows instructions after 3-second buffer
   Future<void> _checkAndShowWelcomeInstructions() async {
+    // Prevent duplicate calls (worldReady can be triggered multiple times)
+    if (_hasShownWelcomeFlow) {
+      print('⏭️ [WorldViewScreen] Welcome flow already shown, skipping');
+      return;
+    }
+    _hasShownWelcomeFlow = true;
+
     // Wait for world to be ready
     while (!_isWorldReady && mounted) {
       await Future.delayed(const Duration(milliseconds: 500));
@@ -355,34 +362,19 @@ class _WorldViewScreenState extends State<WorldViewScreen> {
 
     if (!mounted) return;
 
-    final shouldShowWelcome = await WelcomeInstructionsDialog.shouldShow();
     final prefs = await SharedPreferences.getInstance();
     const musicPrefsShownKey = 'music_prefs_first_shown';
     final musicPrefsShown = prefs.getBool(musicPrefsShownKey) ?? false;
 
     print('🔍 [WorldViewScreen] First launch check:');
-    print('   shouldShowWelcome: $shouldShowWelcome');
     print('   musicPrefsShown: $musicPrefsShown');
 
-    // Show welcome dialog first if needed
-    if (shouldShowWelcome && mounted) {
-      print('📖 [WorldViewScreen] Showing welcome instructions dialog...');
-      try {
-        await WelcomeInstructionsDialog.show(context);
-        print('✅ [WorldViewScreen] Welcome instructions dialog closed');
-      } catch (e) {
-        print('❌ [WorldViewScreen] Error showing welcome dialog: $e');
-      }
-    }
-
-    // Show music preferences dialog after welcome (if not shown before)
+    // Show music preferences dialog for first-time users (before hints)
     if (mounted && !musicPrefsShown) {
-      print(
-        '🎵 [WorldViewScreen] Preparing to show music preferences dialog...',
-      );
+      print('🎵 [WorldViewScreen] Showing music preferences dialog...');
 
-      // Wait a bit after welcome dialog
-      await Future.delayed(const Duration(milliseconds: 800));
+      // Small delay to let world settle
+      await Future.delayed(const Duration(milliseconds: 500));
 
       if (!mounted) {
         print('❌ [WorldViewScreen] Widget no longer mounted');
@@ -391,7 +383,11 @@ class _WorldViewScreenState extends State<WorldViewScreen> {
 
       print('🎵 [WorldViewScreen] Showing music preferences dialog NOW...');
       try {
-        await MusicPreferencesDialog.show(context);
+        await _showDialogWithIframeDisabled(
+          (dialogContext) => MusicPreferencesDialog(
+            onClose: () => Navigator.of(dialogContext).pop(),
+          ),
+        );
         print('✅ [WorldViewScreen] Music preferences dialog closed');
 
         // Mark as shown AFTER dialog is dismissed
@@ -416,25 +412,28 @@ class _WorldViewScreenState extends State<WorldViewScreen> {
           );
         }
 
-        // Send genre preferences to iframe
-        print('🔄 [FIRST INSTALL] Sending genre preferences to iframe...');
-        await Future.delayed(const Duration(milliseconds: 1500));
-
-        try {
-          // Send genre preferences via message passing
-          _sendToJavaScript({
-            'type': 'setGenrePreferences',
-            'genres': selectedGenres,
-          });
-
-          // Fetch fresh recommendations from Dart side
-          await _refreshRecommendations(forceRefresh: true);
-        } catch (e) {
-          print('⚠️ [FIRST INSTALL] Failed to send genre preferences: $e');
-        }
+        // Now initialize demo content after preferences are set
+        print(
+          '🎬 [WorldViewScreen] Initializing demo content after preferences...',
+        );
+        Future.delayed(
+          const Duration(milliseconds: 500),
+          _initializeDemoContent,
+        );
       } catch (e) {
         print('❌ [WorldViewScreen] Error showing music preferences dialog: $e');
+        // Still initialize demo content even if dialog fails
+        Future.delayed(
+          const Duration(milliseconds: 500),
+          _initializeDemoContent,
+        );
       }
+    } else {
+      print(
+        'ℹ️ [WorldViewScreen] Music preferences already shown, initializing demo content',
+      );
+      // Initialize demo content for returning users
+      Future.delayed(const Duration(seconds: 2), _initializeDemoContent);
     }
   }
 
@@ -455,18 +454,119 @@ class _WorldViewScreenState extends State<WorldViewScreen> {
   }
 
   /// Handle object moved
-  void _onObjectMoved(Map<dynamic, dynamic> data) {
+  void _onObjectMoved(Map<dynamic, dynamic> data) async {
     final objectId = data['objectId'] as String?;
     final position = data['position'] as Map?;
     print('📍 Object moved: $objectId to $position');
-    // TODO: Save position to storage
+
+    // Save position to persistence storage
+    if (objectId != null && position != null) {
+      try {
+        final persistenceService = PersistenceService();
+
+        // Load current files from persistence
+        final files = await persistenceService.loadPersistedFiles();
+
+        // Find and update the moved object's position
+        final fileIndex = files.indexWhere((file) => file.path == objectId);
+        if (fileIndex != -1) {
+          final oldFile = files[fileIndex];
+
+          // Extract position coordinates (JavaScript sends as dynamic types)
+          final x = (position['x'] as num?)?.toDouble();
+          final y = (position['y'] as num?)?.toDouble();
+          final z = (position['z'] as num?)?.toDouble();
+          final rotation = (position['rotation'] as num?)?.toDouble();
+
+          // Create updated file with new position
+          files[fileIndex] = FileModel(
+            name: oldFile.name,
+            type: oldFile.type,
+            path: oldFile.path,
+            parentFolder: oldFile.parentFolder,
+            extension: oldFile.extension,
+            x: x ?? oldFile.x,
+            y: y ?? oldFile.y,
+            z: z ?? oldFile.z,
+            rotation: rotation ?? oldFile.rotation,
+            height: oldFile.height,
+            thumbnailDataUrl: oldFile.thumbnailDataUrl,
+            fileSize: oldFile.fileSize,
+            lastModified: oldFile.lastModified,
+            created: oldFile.created,
+            mimeType: oldFile.mimeType,
+            isReadable: oldFile.isReadable,
+            isWritable: oldFile.isWritable,
+            customDisplayName: oldFile.customDisplayName,
+            furnitureId: oldFile.furnitureId,
+            furnitureSlotIndex: oldFile.furnitureSlotIndex,
+            isDemo: oldFile.isDemo,
+            // Copy EXIF metadata
+            cameraMake: oldFile.cameraMake,
+            cameraModel: oldFile.cameraModel,
+            dateTimeOriginal: oldFile.dateTimeOriginal,
+            imageWidth: oldFile.imageWidth,
+            imageHeight: oldFile.imageHeight,
+            aperture: oldFile.aperture,
+            shutterSpeed: oldFile.shutterSpeed,
+            iso: oldFile.iso,
+            focalLength: oldFile.focalLength,
+            flash: oldFile.flash,
+            whiteBalance: oldFile.whiteBalance,
+            orientation: oldFile.orientation,
+            gpsLatitude: oldFile.gpsLatitude,
+            gpsLongitude: oldFile.gpsLongitude,
+            gpsAltitude: oldFile.gpsAltitude,
+            lensModel: oldFile.lensModel,
+            exposureTime: oldFile.exposureTime,
+            fNumber: oldFile.fNumber,
+            photographicSensitivity: oldFile.photographicSensitivity,
+            digitalZoomRatio: oldFile.digitalZoomRatio,
+            sceneCaptureType: oldFile.sceneCaptureType,
+            subjectDistance: oldFile.subjectDistance,
+          );
+
+          // Save updated files list back to persistence
+          await persistenceService.savePersistedFiles(files);
+          print('✅ Position saved for: ${oldFile.name} at ($x, $y, $z)');
+        } else {
+          print('⚠️ Object not found in persistence: $objectId');
+        }
+      } catch (e) {
+        print('❌ Error saving object position: $e');
+      }
+    }
   }
 
   /// Handle object deleted
-  void _onObjectDeleted(Map<dynamic, dynamic> data) {
+  void _onObjectDeleted(Map<dynamic, dynamic> data) async {
     final objectId = data['objectId'] as String?;
     print('🗑️ Object deleted: $objectId');
-    // TODO: Remove from storage
+
+    // Remove from persistence storage
+    if (objectId != null) {
+      try {
+        final persistenceService = PersistenceService();
+
+        // Load current files from persistence
+        final files = await persistenceService.loadPersistedFiles();
+
+        // Remove the deleted object
+        final updatedFiles = files
+            .where((file) => file.path != objectId)
+            .toList();
+
+        if (updatedFiles.length < files.length) {
+          // Save updated files list back to persistence
+          await persistenceService.savePersistedFiles(updatedFiles);
+          print('✅ Object removed from persistence: $objectId');
+        } else {
+          print('⚠️ Object not found in persistence: $objectId');
+        }
+      } catch (e) {
+        print('❌ Error removing object from persistence: $e');
+      }
+    }
   }
 
   /// Handle furniture created
@@ -631,8 +731,19 @@ class _WorldViewScreenState extends State<WorldViewScreen> {
           // Three.js iframe (fullscreen - HTML buttons handle UI)
           HtmlElementView(viewType: _viewId),
 
-          // No Flutter loading overlay - JavaScript bundle handles loading screen
-          // (black screen with rotating messages and progress indicator)
+          // Splash screen overlay - shows while world is loading
+          if (!_isWorldReady)
+            Container(
+              color: Colors.black,
+              child: Center(
+                child: Image.asset(
+                  'assets/images/FirstTapsMV3D_splash1.gif',
+                  width: 300,
+                  height: 300,
+                  fit: BoxFit.contain,
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -670,90 +781,135 @@ class _WorldViewScreenState extends State<WorldViewScreen> {
 
   // Button actions
   void _showOptionsMenu() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.grey[900],
-      isScrollControlled: true, // Allow custom height control
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (BuildContext context) {
-        return OptionsMenuWidget(
-          hasDeletedObjects: _hasDeletedObjects,
-          hasRecentMoves: _hasRecentMoves,
-          sortFileObjects: _sortFileObjects,
-          showFileInfo: _showFileInfo,
-          useFaceTextures: _useFaceTextures,
-          currentWorldType: _currentWorldType,
-          canUndoObjectDeletion: _canUndoObjectDeletion,
-          hasUndoObjectDeleteCallback:
-              false, // Browser version doesn't have undo yet
-          onUndoObjectDelete: () {
-            print('Undo object delete');
-          },
-          onUndoRecentMove: () {
-            print('Undo recent move');
-          },
-          onSortFileObjectsChanged: (value) {
-            setState(() {
-              _sortFileObjects = value;
-            });
-            _sendToJavaScript({'type': 'setSortFileObjects', 'enabled': value});
-          },
-          onShowFileInfoChanged: (value) {
-            setState(() {
-              _showFileInfo = value;
-            });
-            _sendToJavaScript({'type': 'setShowFileInfo', 'enabled': value});
-          },
-          onUseFaceTexturesChanged: (value) {
-            setState(() {
-              _useFaceTextures = value;
-            });
-            _sendToJavaScript({'type': 'setUseFaceTextures', 'enabled': value});
-          },
-          onShowWorldSwitchDialog: () => _showWorldSwitchDialog(),
-          onShowUndoConfirmationDialog: () {
-            print('Show undo confirmation dialog');
-          },
-          onShowAdvancedOptionsDialog: () {
-            print('Show advanced options dialog');
-          },
-          onShowDeleteOptions: () {
-            print('Show delete options');
-          },
-          onShowStackingCriteria: () {
-            Navigator.pop(context);
-            // TODO: Implement stacking criteria for browser version
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text(
-                  'Stacking criteria coming soon for browser version',
+    // Disable iframe pointer events so Flutter widgets can receive clicks/taps
+    _showDialogWithIframeDisabled(
+      (BuildContext dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        alignment: Alignment.bottomCenter,
+        insetPadding: const EdgeInsets.all(0),
+        child: Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: Colors.grey[900],
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          ),
+          child: OptionsMenuWidget(
+            hasDeletedObjects: _hasDeletedObjects,
+            hasRecentMoves: _hasRecentMoves,
+            sortFileObjects: _sortFileObjects,
+            showFileInfo: _showFileInfo,
+            useFaceTextures: _useFaceTextures,
+            currentWorldType: _currentWorldType,
+            canUndoObjectDeletion: _canUndoObjectDeletion,
+            hasUndoObjectDeleteCallback:
+                false, // Browser version doesn't have undo yet
+            onUndoObjectDelete: () {
+              print('Undo object delete');
+            },
+            onUndoRecentMove: () {
+              print('Undo recent move');
+            },
+            onSortFileObjectsChanged: (value) {
+              setState(() {
+                _sortFileObjects = value;
+              });
+              _sendToJavaScript({
+                'type': 'setSortFileObjects',
+                'enabled': value,
+              });
+            },
+            onShowFileInfoChanged: (value) {
+              setState(() {
+                _showFileInfo = value;
+              });
+              _sendToJavaScript({'type': 'setShowFileInfo', 'enabled': value});
+            },
+            onUseFaceTexturesChanged: (value) {
+              setState(() {
+                _useFaceTextures = value;
+              });
+              _sendToJavaScript({
+                'type': 'setUseFaceTextures',
+                'enabled': value,
+              });
+            },
+            onShowWorldSwitchDialog: () {
+              Navigator.pop(dialogContext);
+              _showWorldSwitchDialog();
+            },
+            onShowUndoConfirmationDialog: () {
+              print('Show undo confirmation dialog');
+            },
+            onShowAdvancedOptionsDialog: () {
+              print('Show advanced options dialog');
+            },
+            onShowDeleteOptions: () {
+              print('Show delete options');
+            },
+            onShowStackingCriteria: () {
+              Navigator.pop(dialogContext);
+              // TODO: Implement stacking criteria for browser version
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Stacking criteria coming soon for browser version',
+                  ),
+                  duration: Duration(seconds: 2),
                 ),
-                duration: Duration(seconds: 2),
-              ),
-            );
-          },
-          onShowPremiumStore: () {
-            print('Show premium store');
-          },
-          onShareWithFriend: () {
-            print('Share with friend');
-          },
-          onShow3DMessagingSettings: () {
-            print('Show 3D messaging settings');
-          },
-          onShowCreatePath: () {
-            print('Show create path dialog');
-          },
-          onShowCreateFurniture: () => _showFurnitureSelector(),
-          onShowFurnitureManager: () => _navigateToListView(),
-          onImportFurniture: () {
-            print('Import furniture');
-          },
-          getWorldDisplayName: ThreeJsUtils.getWorldDisplayName,
-        );
-      },
+              );
+            },
+            onShowPremiumStore: () {
+              Navigator.pop(dialogContext);
+              print('Show premium store');
+            },
+            onShareWithFriend: () {
+              Navigator.pop(dialogContext);
+              print('Share with friend');
+            },
+            onShow3DMessagingSettings: () {
+              Navigator.pop(dialogContext);
+              print('Show 3D messaging settings');
+            },
+            onShowCreatePath: () {
+              Navigator.pop(dialogContext);
+              print('Show create path dialog');
+            },
+            onShowCreateFurniture: () {
+              Navigator.pop(dialogContext);
+              _showFurnitureSelector();
+            },
+            onShowFurnitureManager: () {
+              Navigator.pop(dialogContext);
+              _navigateToListView();
+            },
+            onImportFurniture: () {
+              Navigator.pop(dialogContext);
+              print('Import furniture');
+            },
+            onShowInstructions: () {
+              Navigator.pop(dialogContext);
+              // Trigger hints again by sending message to JavaScript
+              _sendToJavaScript({'type': 'showHintsAfterPreferences'});
+            },
+            onShowMusicPreferences: () {
+              Navigator.pop(dialogContext);
+              _showDialogWithIframeDisabled(
+                (prefsContext) => MusicPreferencesDialog(
+                  onClose: () => Navigator.of(prefsContext).pop(),
+                ),
+              );
+            },
+            onShowPrivacyPolicy: () {
+              Navigator.pop(dialogContext);
+              _showDialogWithIframeDisabled(
+                (policyContext) => const PrivacyPolicyDialog(),
+              );
+            },
+            getWorldDisplayName: ThreeJsUtils.getWorldDisplayName,
+          ),
+        ),
+      ),
+      barrierDismissible: true,
     );
   }
 
@@ -834,98 +990,149 @@ class _WorldViewScreenState extends State<WorldViewScreen> {
   void _show2DListView() {
     // TODO: Request furniture list from JavaScript and display
     _showDialogWithIframeDisabled(
-      (BuildContext dialogContext) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        title: const Text(
-          'Furniture Manager',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: SizedBox(
-          width: 600,
-          height: 500,
+      (BuildContext dialogContext) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 600, maxHeight: 600),
+          decoration: BoxDecoration(
+            color: Colors.grey[900],
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
-                '2D List View - Furniture Browser',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+              // Header with close button
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[850],
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                'This screen will show all your furniture pieces and their contents in a list format.',
-                style: TextStyle(color: Colors.grey[400], fontSize: 14),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 20),
-              Expanded(
-                child: ListView(
+                child: Row(
                   children: [
-                    ListTile(
-                      leading: const Icon(Icons.weekend, color: Colors.blue),
-                      title: const Text(
-                        'Gallery Wall',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                      subtitle: Text(
-                        '10 items',
-                        style: TextStyle(color: Colors.grey[400]),
-                      ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.edit, color: Colors.blue),
-                        onPressed: () => print('Edit gallery'),
+                    const Icon(Icons.view_list, color: Colors.white, size: 24),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Furniture Manager',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
-                    ListTile(
-                      leading: const Icon(Icons.bookmarks, color: Colors.green),
-                      title: const Text(
-                        'Bookshelf',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                      subtitle: Text(
-                        '10 items',
-                        style: TextStyle(color: Colors.grey[400]),
-                      ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.edit, color: Colors.blue),
-                        onPressed: () => print('Edit bookshelf'),
-                      ),
-                    ),
-                    ListTile(
-                      leading: const Icon(
-                        Icons.view_in_ar,
-                        color: Colors.purple,
-                      ),
-                      title: const Text(
-                        'Stage',
-                        style: TextStyle(color: Colors.white),
-                      ),
-                      subtitle: Text(
-                        '30 items',
-                        style: TextStyle(color: Colors.grey[400]),
-                      ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.edit, color: Colors.blue),
-                        onPressed: () => print('Edit stage'),
-                      ),
+                    IconButton(
+                      onPressed: () {
+                        print('Furniture Manager close button pressed');
+                        Navigator.of(dialogContext).pop();
+                      },
+                      tooltip: 'Close',
+                      icon: const Icon(Icons.close, color: Colors.white),
                     ),
                   ],
+                ),
+              ),
+              // Content
+              Flexible(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      const Text(
+                        '2D List View - Furniture Browser',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'This screen will show all your furniture pieces and their contents in a list format.',
+                        style: TextStyle(color: Colors.grey[400], fontSize: 14),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 20),
+                      Expanded(
+                        child: ListView(
+                          children: [
+                            ListTile(
+                              leading: const Icon(
+                                Icons.weekend,
+                                color: Colors.blue,
+                              ),
+                              title: const Text(
+                                'Gallery Wall',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                              subtitle: Text(
+                                '10 items',
+                                style: TextStyle(color: Colors.grey[400]),
+                              ),
+                              trailing: IconButton(
+                                icon: const Icon(
+                                  Icons.edit,
+                                  color: Colors.blue,
+                                ),
+                                onPressed: () => print('Edit gallery'),
+                              ),
+                            ),
+                            ListTile(
+                              leading: const Icon(
+                                Icons.bookmarks,
+                                color: Colors.green,
+                              ),
+                              title: const Text(
+                                'Bookshelf',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                              subtitle: Text(
+                                '10 items',
+                                style: TextStyle(color: Colors.grey[400]),
+                              ),
+                              trailing: IconButton(
+                                icon: const Icon(
+                                  Icons.edit,
+                                  color: Colors.blue,
+                                ),
+                                onPressed: () => print('Edit bookshelf'),
+                              ),
+                            ),
+                            ListTile(
+                              leading: const Icon(
+                                Icons.view_in_ar,
+                                color: Colors.purple,
+                              ),
+                              title: const Text(
+                                'Stage',
+                                style: TextStyle(color: Colors.white),
+                              ),
+                              subtitle: Text(
+                                '30 items',
+                                style: TextStyle(color: Colors.grey[400]),
+                              ),
+                              trailing: IconButton(
+                                icon: const Icon(
+                                  Icons.edit,
+                                  color: Colors.blue,
+                                ),
+                                onPressed: () => print('Edit stage'),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              print('Furniture Manager close button pressed');
-              Navigator.of(dialogContext).pop();
-            },
-            child: const Text('Close', style: TextStyle(color: Colors.blue)),
-          ),
-        ],
       ),
     );
   }
@@ -951,111 +1158,149 @@ class _WorldViewScreenState extends State<WorldViewScreen> {
 
   void _showWorldSwitchDialog() {
     _showDialogWithIframeDisabled(
-      (BuildContext dialogContext) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        title: const Text(
-          'Select World Template',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: SingleChildScrollView(
+      (BuildContext dialogContext) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
+          decoration: BoxDecoration(
+            color: Colors.grey[900],
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Padding(
-                padding: EdgeInsets.only(bottom: 8.0),
-                child: Text(
-                  'Free Worlds',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey,
+              // Header with close button
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[850],
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
                   ),
                 ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.public, color: Colors.white, size: 24),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Select World Template',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () {
+                        print('🌍 World selector close button pressed');
+                        Navigator.of(dialogContext).pop();
+                      },
+                      tooltip: 'Close',
+                      icon: const Icon(Icons.close, color: Colors.white),
+                    ),
+                  ],
+                ),
               ),
-              ListTile(
-                leading: const Icon(Icons.grass, color: Colors.green),
-                title: const Text(
-                  'Green Plane',
-                  style: TextStyle(color: Colors.white),
+              // Scrollable content
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 8.0),
+                        child: Text(
+                          'Free Worlds',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.grass, color: Colors.green),
+                        title: const Text(
+                          'Green Plane',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        subtitle: Text(
+                          'Simple green ground plane with natural feel',
+                          style: TextStyle(color: Colors.grey[400]),
+                        ),
+                        trailing: _currentWorldType == 'green-plane'
+                            ? const Icon(Icons.check, color: Colors.green)
+                            : null,
+                        onTap: () {
+                          Navigator.pop(dialogContext);
+                          _switchToWorld('green-plane');
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.star, color: Colors.purple),
+                        title: const Text(
+                          'Space',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        subtitle: Text(
+                          'Dark space environment with stars',
+                          style: TextStyle(color: Colors.grey[400]),
+                        ),
+                        trailing: _currentWorldType == 'space'
+                            ? const Icon(Icons.check, color: Colors.green)
+                            : null,
+                        onTap: () {
+                          Navigator.pop(dialogContext);
+                          _switchToWorld('space');
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.waves, color: Colors.blue),
+                        title: const Text(
+                          'Ocean',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        subtitle: Text(
+                          'Ocean waves environment with water effects',
+                          style: TextStyle(color: Colors.grey[400]),
+                        ),
+                        trailing: _currentWorldType == 'ocean'
+                            ? const Icon(Icons.check, color: Colors.green)
+                            : null,
+                        onTap: () {
+                          Navigator.pop(dialogContext);
+                          _switchToWorld('ocean');
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.store, color: Colors.orange),
+                        title: const Text(
+                          'Record Store',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        subtitle: Text(
+                          'Browse media like a vintage record shop',
+                          style: TextStyle(color: Colors.grey[400]),
+                        ),
+                        trailing: _currentWorldType == 'record-store'
+                            ? const Icon(Icons.check, color: Colors.green)
+                            : null,
+                        onTap: () {
+                          Navigator.pop(dialogContext);
+                          _switchToWorld('record-store');
+                        },
+                      ),
+                    ],
+                  ),
                 ),
-                subtitle: Text(
-                  'Simple green ground plane with natural feel',
-                  style: TextStyle(color: Colors.grey[400]),
-                ),
-                trailing: _currentWorldType == 'green-plane'
-                    ? const Icon(Icons.check, color: Colors.green)
-                    : null,
-                onTap: () {
-                  Navigator.pop(dialogContext);
-                  _switchToWorld('green-plane');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.star, color: Colors.purple),
-                title: const Text(
-                  'Space',
-                  style: TextStyle(color: Colors.white),
-                ),
-                subtitle: Text(
-                  'Dark space environment with stars',
-                  style: TextStyle(color: Colors.grey[400]),
-                ),
-                trailing: _currentWorldType == 'space'
-                    ? const Icon(Icons.check, color: Colors.green)
-                    : null,
-                onTap: () {
-                  Navigator.pop(dialogContext);
-                  _switchToWorld('space');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.waves, color: Colors.blue),
-                title: const Text(
-                  'Ocean',
-                  style: TextStyle(color: Colors.white),
-                ),
-                subtitle: Text(
-                  'Ocean waves environment with water effects',
-                  style: TextStyle(color: Colors.grey[400]),
-                ),
-                trailing: _currentWorldType == 'ocean'
-                    ? const Icon(Icons.check, color: Colors.green)
-                    : null,
-                onTap: () {
-                  Navigator.pop(dialogContext);
-                  _switchToWorld('ocean');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.store, color: Colors.orange),
-                title: const Text(
-                  'Record Store',
-                  style: TextStyle(color: Colors.white),
-                ),
-                subtitle: Text(
-                  'Browse media like a vintage record shop',
-                  style: TextStyle(color: Colors.grey[400]),
-                ),
-                trailing: _currentWorldType == 'record-store'
-                    ? const Icon(Icons.check, color: Colors.green)
-                    : null,
-                onTap: () {
-                  Navigator.pop(dialogContext);
-                  _switchToWorld('record-store');
-                },
               ),
             ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              print('🌍 World selector cancel button pressed');
-              Navigator.of(dialogContext).pop();
-            },
-            child: const Text('Cancel', style: TextStyle(color: Colors.blue)),
-          ),
-        ],
       ),
     );
   }
@@ -1063,169 +1308,279 @@ class _WorldViewScreenState extends State<WorldViewScreen> {
   void _showSearchMusicVideos() {
     final searchController = TextEditingController();
     _showDialogWithIframeDisabled(
-      (BuildContext dialogContext) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        title: const Text(
-          'Search Music/Videos',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: searchController,
-              style: const TextStyle(color: Colors.white),
-              decoration: InputDecoration(
-                labelText: 'Search',
-                labelStyle: TextStyle(color: Colors.grey[400]),
-                hintText: 'Enter artist, song, or video title...',
-                hintStyle: TextStyle(color: Colors.grey[600]),
-                prefixIcon: Icon(Icons.search, color: Colors.grey[400]),
-                enabledBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.grey[700]!),
+      (BuildContext dialogContext) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 450),
+          decoration: BoxDecoration(
+            color: Colors.grey[900],
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header with close button
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[850],
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                  ),
                 ),
-                focusedBorder: const UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.blue),
+                child: Row(
+                  children: [
+                    const Icon(Icons.search, color: Colors.white, size: 24),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Search Music/Videos',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () {
+                        print('🔍 Search music/videos close button pressed');
+                        Navigator.of(dialogContext).pop();
+                      },
+                      tooltip: 'Close',
+                      icon: const Icon(Icons.close, color: Colors.white),
+                    ),
+                  ],
                 ),
               ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              'Search across YouTube, Spotify, and other platforms to find media content.',
-              style: TextStyle(color: Colors.grey[500], fontSize: 12),
-              textAlign: TextAlign.center,
-            ),
-          ],
+              // Content
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: searchController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        labelText: 'Search',
+                        labelStyle: TextStyle(color: Colors.grey[400]),
+                        hintText: 'Enter artist, song, or video title...',
+                        hintStyle: TextStyle(color: Colors.grey[600]),
+                        prefixIcon: Icon(Icons.search, color: Colors.grey[400]),
+                        enabledBorder: UnderlineInputBorder(
+                          borderSide: BorderSide(color: Colors.grey[700]!),
+                        ),
+                        focusedBorder: const UnderlineInputBorder(
+                          borderSide: BorderSide(color: Colors.blue),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Search across YouTube, Spotify, and other platforms to find media content.',
+                      style: TextStyle(color: Colors.grey[500], fontSize: 12),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 24),
+                    // Action buttons
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () {
+                            print('🔍 Search music/videos cancel pressed');
+                            Navigator.of(dialogContext).pop();
+                          },
+                          child: const Text(
+                            'Cancel',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue,
+                            foregroundColor: Colors.white,
+                          ),
+                          onPressed: () {
+                            if (searchController.text.isNotEmpty) {
+                              final query = searchController.text;
+                              print('🔍 Searching for: $query');
+                              Navigator.pop(dialogContext);
+                              // Navigate to MusicSearchScreen with query
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) =>
+                                      const MusicSearchScreen(),
+                                ),
+                              );
+                            }
+                          },
+                          child: const Text('Search'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              print('🔍 Search music/videos cancel pressed');
-              Navigator.of(dialogContext).pop();
-            },
-            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-          ),
-          TextButton(
-            onPressed: () {
-              if (searchController.text.isNotEmpty) {
-                final query = searchController.text;
-                print('🔍 Searching for: $query');
-                Navigator.pop(dialogContext);
-                // Navigate to MusicSearchScreen with query
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const MusicSearchScreen(),
-                  ),
-                );
-              }
-            },
-            child: const Text('Search', style: TextStyle(color: Colors.blue)),
-          ),
-        ],
       ),
     );
   }
 
   void _showFurnitureTypeSelector() {
     _showDialogWithIframeDisabled(
-      (BuildContext dialogContext) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        title: const Text(
-          'Select Furniture Type',
-          style: TextStyle(color: Colors.white),
-        ),
-        content: SingleChildScrollView(
+      (BuildContext dialogContext) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
+          decoration: BoxDecoration(
+            color: Colors.grey[900],
+            borderRadius: BorderRadius.circular(16),
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ListTile(
-                leading: const Icon(Icons.collections, color: Colors.blue),
-                title: const Text(
-                  'Bookshelf',
-                  style: TextStyle(color: Colors.white),
+              // Header with close button
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[850],
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                  ),
                 ),
-                subtitle: Text(
-                  '10 items',
-                  style: TextStyle(color: Colors.grey[400]),
+                child: Row(
+                  children: [
+                    const Icon(Icons.weekend, color: Colors.white, size: 24),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Select Furniture Type',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () {
+                        print(
+                          '🪑 Furniture type selector close button pressed',
+                        );
+                        Navigator.of(dialogContext).pop();
+                      },
+                      tooltip: 'Close',
+                      icon: const Icon(Icons.close, color: Colors.white),
+                    ),
+                  ],
                 ),
-                onTap: () {
-                  Navigator.pop(dialogContext);
-                  _createFurniture('bookshelf');
-                },
               ),
-              ListTile(
-                leading: const Icon(Icons.view_in_ar, color: Colors.purple),
-                title: const Text(
-                  'Gallery Wall',
-                  style: TextStyle(color: Colors.white),
+              // Scrollable content
+              Flexible(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ListTile(
+                        leading: const Icon(
+                          Icons.collections,
+                          color: Colors.blue,
+                        ),
+                        title: const Text(
+                          'Bookshelf',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        subtitle: Text(
+                          '10 items',
+                          style: TextStyle(color: Colors.grey[400]),
+                        ),
+                        onTap: () {
+                          Navigator.pop(dialogContext);
+                          _createFurniture('bookshelf');
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(
+                          Icons.view_in_ar,
+                          color: Colors.purple,
+                        ),
+                        title: const Text(
+                          'Gallery Wall',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        subtitle: Text(
+                          '10 items',
+                          style: TextStyle(color: Colors.grey[400]),
+                        ),
+                        onTap: () {
+                          Navigator.pop(dialogContext);
+                          _createFurniture('gallery_wall');
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.stairs, color: Colors.orange),
+                        title: const Text(
+                          'Riser',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        subtitle: Text(
+                          '20 items',
+                          style: TextStyle(color: Colors.grey[400]),
+                        ),
+                        onTap: () {
+                          Navigator.pop(dialogContext);
+                          _createFurniture('riser');
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(
+                          Icons.theaters,
+                          color: Colors.green,
+                        ),
+                        title: const Text(
+                          'Stage Small',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        subtitle: Text(
+                          '30 items',
+                          style: TextStyle(color: Colors.grey[400]),
+                        ),
+                        onTap: () {
+                          Navigator.pop(dialogContext);
+                          _createFurniture('stage_small');
+                        },
+                      ),
+                      ListTile(
+                        leading: const Icon(Icons.stadium, color: Colors.red),
+                        title: const Text(
+                          'Stage Large',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        subtitle: Text(
+                          '50 items',
+                          style: TextStyle(color: Colors.grey[400]),
+                        ),
+                        onTap: () {
+                          Navigator.pop(dialogContext);
+                          _createFurniture('stage_large');
+                        },
+                      ),
+                    ],
+                  ),
                 ),
-                subtitle: Text(
-                  '10 items',
-                  style: TextStyle(color: Colors.grey[400]),
-                ),
-                onTap: () {
-                  Navigator.pop(dialogContext);
-                  _createFurniture('gallery_wall');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.stairs, color: Colors.orange),
-                title: const Text(
-                  'Riser',
-                  style: TextStyle(color: Colors.white),
-                ),
-                subtitle: Text(
-                  '20 items',
-                  style: TextStyle(color: Colors.grey[400]),
-                ),
-                onTap: () {
-                  Navigator.pop(dialogContext);
-                  _createFurniture('riser');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.theaters, color: Colors.green),
-                title: const Text(
-                  'Stage Small',
-                  style: TextStyle(color: Colors.white),
-                ),
-                subtitle: Text(
-                  '30 items',
-                  style: TextStyle(color: Colors.grey[400]),
-                ),
-                onTap: () {
-                  Navigator.pop(dialogContext);
-                  _createFurniture('stage_small');
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.stadium, color: Colors.red),
-                title: const Text(
-                  'Stage Large',
-                  style: TextStyle(color: Colors.white),
-                ),
-                subtitle: Text(
-                  '50 items',
-                  style: TextStyle(color: Colors.grey[400]),
-                ),
-                onTap: () {
-                  Navigator.pop(dialogContext);
-                  _createFurniture('stage_large');
-                },
               ),
             ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              print('🪑 Furniture type selector cancel pressed');
-              Navigator.of(dialogContext).pop();
-            },
-            child: const Text('Cancel', style: TextStyle(color: Colors.blue)),
-          ),
-        ],
       ),
     );
   }
@@ -1233,43 +1588,111 @@ class _WorldViewScreenState extends State<WorldViewScreen> {
   void _showAddUrlDialog() {
     final urlController = TextEditingController();
     _showDialogWithIframeDisabled(
-      (BuildContext dialogContext) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        title: const Text('Add URL', style: TextStyle(color: Colors.white)),
-        content: TextField(
-          controller: urlController,
-          style: const TextStyle(color: Colors.white),
-          decoration: InputDecoration(
-            labelText: 'Enter URL',
-            labelStyle: TextStyle(color: Colors.grey[400]),
-            hintText: 'https://youtube.com/...',
-            hintStyle: TextStyle(color: Colors.grey[600]),
-            enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Colors.grey[700]!),
-            ),
-            focusedBorder: const UnderlineInputBorder(
-              borderSide: BorderSide(color: Colors.blue),
-            ),
+      (BuildContext dialogContext) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 450),
+          decoration: BoxDecoration(
+            color: Colors.grey[900],
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header with close button
+              Container(
+                padding: const EdgeInsets.fromLTRB(20, 16, 12, 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[850],
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(16),
+                    topRight: Radius.circular(16),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.link, color: Colors.white, size: 24),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Add URL',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () {
+                        print('🔗 Add URL close button pressed');
+                        Navigator.of(dialogContext).pop();
+                      },
+                      tooltip: 'Close',
+                      icon: const Icon(Icons.close, color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+              // Content
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextField(
+                      controller: urlController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        labelText: 'Enter URL',
+                        labelStyle: TextStyle(color: Colors.grey[400]),
+                        hintText: 'https://youtube.com/...',
+                        hintStyle: TextStyle(color: Colors.grey[600]),
+                        enabledBorder: UnderlineInputBorder(
+                          borderSide: BorderSide(color: Colors.grey[700]!),
+                        ),
+                        focusedBorder: const UnderlineInputBorder(
+                          borderSide: BorderSide(color: Colors.blue),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    // Action buttons
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        TextButton(
+                          onPressed: () {
+                            print('🔗 Add URL cancel pressed');
+                            Navigator.of(dialogContext).pop();
+                          },
+                          child: const Text(
+                            'Cancel',
+                            style: TextStyle(color: Colors.grey),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        ElevatedButton(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.blue,
+                            foregroundColor: Colors.white,
+                          ),
+                          onPressed: () {
+                            if (urlController.text.isNotEmpty) {
+                              _addUrlObject(urlController.text);
+                              Navigator.of(dialogContext).pop();
+                            }
+                          },
+                          child: const Text('Add'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              print('🔗 Add URL cancel pressed');
-              Navigator.of(dialogContext).pop();
-            },
-            child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-          ),
-          TextButton(
-            onPressed: () {
-              if (urlController.text.isNotEmpty) {
-                _addUrlObject(urlController.text);
-                Navigator.of(dialogContext).pop();
-              }
-            },
-            child: const Text('Add', style: TextStyle(color: Colors.blue)),
-          ),
-        ],
       ),
     );
   }

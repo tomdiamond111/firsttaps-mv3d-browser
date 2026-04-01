@@ -969,13 +969,32 @@
     // Global initialization trigger
     window.addEventListener('load', () => {
         if (typeof THREE !== 'undefined') {
-            initializeThreeGlobal(THREE);
-            
-            // Initialize link name handler
-            initializeLinkNameHandler();
-            
-            // Initialize critical fixes
-            console.log('🔧 Initializing critical bug fixes...');
+            // Check if app initialization is blocked by version manager
+            if (window.appLoadBlocked) {
+                console.log('🔒 App initialization blocked pending version update');
+                console.log('   Waiting for versionCheckPassed event...');
+                
+                // Listen for the event that signals it's safe to initialize
+                window.addEventListener('versionCheckPassed', () => {
+                    console.log('✅ Version check passed, initializing app...');
+                    initializeThreeGlobal(THREE);
+                    
+                    // Initialize link name handler
+                    initializeLinkNameHandler();
+                    
+                    // Initialize critical fixes
+                    console.log('🔧 Initializing critical bug fixes...');
+                }, { once: true });
+            } else {
+                // No blocking, initialize normally
+                initializeThreeGlobal(THREE);
+                
+                // Initialize link name handler
+                initializeLinkNameHandler();
+                
+                // Initialize critical fixes
+                console.log('🔧 Initializing critical bug fixes...');
+            }
             
             // Set up global scene reference for helper functions
             window.scene = null;
@@ -1707,6 +1726,58 @@
         } else {
             console.warn('🎮 window.app not available for background gaming initialization');
         }
+        
+        // BROWSER-ONLY: Restore link objects from localStorage
+        console.log('🌐 [BROWSER] DEBUG: IS_BROWSER_MODE =', window.IS_BROWSER_MODE, ', browserObjectStorage =', !!window.browserObjectStorage);
+        
+        if (window.IS_BROWSER_MODE && window.browserObjectStorage) {
+            console.log('🌐 [BROWSER] Checking for saved link objects to restore...');
+            
+            // Delay restoration to ensure all managers are initialized
+            setTimeout(() => {
+                try {
+                    // Set restoration flag to suppress notifications
+                    window._worldRestorationInProgress = true;
+                    
+                    const linkObjects = window.browserObjectStorage.loadAllLinkObjects();
+                    const objectIds = Object.keys(linkObjects);
+                    
+                    console.log('🌐 [BROWSER] DEBUG: linkObjects =', linkObjects, ', objectIds =', objectIds);
+                    
+                    if (objectIds.length > 0) {
+                        console.log(`🌐 [BROWSER] Found ${objectIds.length} link objects to restore`);
+                        
+                        // Check if fileObjectManager is available
+                        console.log('🌐 [BROWSER] DEBUG: window.app =', !!window.app, ', fileObjectManager =', !!window.app?.fileObjectManager);
+                        
+                        if (window.app && window.app.fileObjectManager) {
+                            // Convert link objects to format expected by createFileObjects
+                            const fileObjectsArray = objectIds.map(id => linkObjects[id]);
+                            console.log('🌐 [BROWSER] DEBUG: Calling createFileObjects with', fileObjectsArray.length, 'objects:', fileObjectsArray);
+                            window.app.fileObjectManager.createFileObjects(fileObjectsArray);
+                            console.log(`✅ [BROWSER] Restored ${objectIds.length} link objects from localStorage`);
+                        } else {
+                            console.warn('⚠️ [BROWSER] fileObjectManager not available, cannot restore link objects');
+                            console.warn('🌐 [BROWSER] DEBUG: Available app managers:', window.app ? Object.keys(window.app) : 'window.app is null');
+                        }
+                    } else {
+                        console.log('🌐 [BROWSER] No saved link objects found in localStorage');
+                    }
+                    
+                    // Clear restoration flag after delay
+                    setTimeout(() => {
+                        window._worldRestorationInProgress = false;
+                        console.log('🌐 [BROWSER] Link object restoration complete');
+                    }, 2000);
+                    
+                } catch (error) {
+                    console.error('❌ [BROWSER] Error restoring link objects:', error);
+                    window._worldRestorationInProgress = false;
+                }
+            }, 1000); // 1 second delay to ensure managers are ready
+        } else {
+            console.warn('⚠️ [BROWSER] Skipping link object restoration - IS_BROWSER_MODE or browserObjectStorage not available');
+        }
     };
     console.log('✅ window.notifyWorldReady() function registered and ready');
 
@@ -1714,16 +1785,40 @@
     // AUTO-INITIALIZE: Start the app automatically when THREE.js is available
     // ============================================================================
     if (typeof THREE !== 'undefined') {
-        console.log('🚀 Auto-initializing WindowWorldApp...');
-        initializeThreeGlobal(THREE);
+        // Check if app initialization is blocked by version manager
+        if (window.appLoadBlocked) {
+            console.log('🔒 Auto-initialize blocked pending version update');
+            console.log('   Waiting for versionCheckPassed event...');
+            
+            // Listen for the event that signals it's safe to initialize
+            window.addEventListener('versionCheckPassed', () => {
+                console.log('✅ Version check passed, auto-initializing WindowWorldApp...');
+                initializeThreeGlobal(THREE);
+            }, { once: true });
+        } else {
+            console.log('🚀 Auto-initializing WindowWorldApp...');
+            initializeThreeGlobal(THREE);
+        }
     } else {
         console.log('⏳ Waiting for THREE.js to load...');
         // Wait for THREE.js to be available
         const checkTHREE = setInterval(() => {
             if (typeof THREE !== 'undefined') {
                 clearInterval(checkTHREE);
-                console.log('🚀 THREE.js detected, initializing WindowWorldApp...');
-                initializeThreeGlobal(THREE);
+                
+                // Check blocking before initializing
+                if (window.appLoadBlocked) {
+                    console.log('🔒 Delayed initialize blocked pending version update');
+                    console.log('   Waiting for versionCheckPassed event...');
+                    
+                    window.addEventListener('versionCheckPassed', () => {
+                        console.log('✅ Version check passed, initializing WindowWorldApp...');
+                        initializeThreeGlobal(THREE);
+                    }, { once: true });
+                } else {
+                    console.log('🚀 THREE.js detected, initializing WindowWorldApp...');
+                    initializeThreeGlobal(THREE);
+                }
             }
         }, 100);
     }

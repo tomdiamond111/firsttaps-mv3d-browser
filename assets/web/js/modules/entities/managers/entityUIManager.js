@@ -543,6 +543,17 @@ class EntityUIManager {
             }
         }
         
+        // ALSO update the static HTML score button (scoreBtn from index2.html)
+        const staticScoreBtn = document.getElementById('scoreBtn');
+        if (staticScoreBtn) {
+            const nextLevelThreshold = this.getNextLevelThreshold();
+            if (nextLevelThreshold) {
+                staticScoreBtn.textContent = `Lv${this.currentLevel} | 🏆 ${this.totalPoints} pts`;
+            } else {
+                staticScoreBtn.textContent = `Lv${this.currentLevel} MAX | 🏆 ${this.totalPoints} pts`;
+            }
+        }
+        
         // ONLY update simple mobile scoreboard - no fallbacks to avoid conflicts
         if (this.scoreBillboard && typeof this.scoreBillboard.updateContent === 'function') {
             this.scoreBillboard.updateContent();

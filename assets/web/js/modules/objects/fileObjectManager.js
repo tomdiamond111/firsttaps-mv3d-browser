@@ -632,11 +632,43 @@
             // Determine position
             let position = { x: 0, y: 0, z: 0 };
             
-            if (fileData.x !== undefined && fileData.z !== undefined) {
+            // BROWSER-ONLY PERSISTENCE: First check localStorage (for browser-only mode)
+            let savedPosition = null;
+            if (window.browserObjectStorage) {
+                savedPosition = window.browserObjectStorage.load(fileData.id);
+                
+                if (savedPosition) {
+                    console.log(`💾 [BROWSER] Found saved position for ${fileData.name}:`, savedPosition);
+                }
+            }
+            
+            // Check persisted position from Dart or localStorage
+            // Priority: 1. localStorage (browser mode), 2. fileData (Flutter mode)
+            const hasPersistedPosition = savedPosition || (fileData.x !== undefined && fileData.z !== undefined);
+            
+            if (hasPersistedPosition) {
+                // Use persisted position (localStorage takes priority for browser mode)
+                let x, z, y;
+                
+                if (savedPosition) {
+                    x = savedPosition.x;
+                    z = savedPosition.z;
+                    y = savedPosition.y;
+                    
+                    // Restore furniture seating if saved
+                    if (savedPosition.furnitureId) {
+                        fileData.furnitureId = savedPosition.furnitureId;
+                        fileData.furnitureSlotIndex = savedPosition.slotIndex;
+                        console.log(`💾 [BROWSER] Restored furniture seating: ${savedPosition.furnitureId} slot ${savedPosition.slotIndex}`);
+                    }
+                } else {
+                    x = fileData.x;
+                    z = fileData.z;
+                    y = fileData.y;
+                }
+                
                 // Validate position - prevent objects from being positioned too far away
                 const maxDistance = 100; // Maximum distance from origin
-                let x = fileData.x;
-                let z = fileData.z;
                 
                 // Clamp extreme positions to keep objects visible
                 if (Math.abs(x) > maxDistance) {
@@ -655,20 +687,24 @@
                 // For ground objects, start at ground level
                 const tempObjectHeight = 2; // Default height for estimation
                 const expectedGroundY = tempObjectHeight / 2;
-                const wasOriginallyStacked = fileData.y && fileData.y > (expectedGroundY + 0.1);
+                const wasOriginallyStacked = y && y > (expectedGroundY + 0.1);
                 
                 if (wasOriginallyStacked) {
-                    position.y = fileData.y; // Preserve original Y for stacking calculation
-                    console.log('Preserving original Y position for stacked object:', fileData.y);
+                    position.y = y; // Preserve original Y for stacking calculation
+                    console.log('Preserving original Y position for stacked object:', y);
                 } else {
                     position.y = 0; // Start at ground level, proper Y will be calculated by positioning logic
                     console.log('Starting at ground level, Y will be recalculated for ground object');
                 }
                 
                 console.log('Using persisted position:', {x: position.x, y: position.y, z: position.z});
-                console.log('Original fileData position was x:', fileData.x, 'y:', fileData.y, 'z:', fileData.z);
-                if (x !== fileData.x || z !== fileData.z) {
-                    console.log('Position was clamped for visibility');
+                if (savedPosition) {
+                    console.log('💾 [BROWSER] Position loaded from localStorage');
+                } else {
+                    console.log('Original fileData position was x:', fileData.x, 'y:', fileData.y, 'z:', fileData.z);
+                    if (x !== fileData.x || z !== fileData.z) {
+                        console.log('Position was clamped for visibility');
+                    }
                 }
             } else {
                 position = this.objectPositioner.calculateOptimalPosition(

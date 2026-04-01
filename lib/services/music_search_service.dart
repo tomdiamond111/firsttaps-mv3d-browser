@@ -5,60 +5,25 @@ import 'package:firsttaps_mv3d_browser/models/music_search_result.dart';
 import 'youtube_quota_service.dart';
 
 /// Service for searching music and videos across multiple platforms
-/// Currently supports: YouTube Data API v3
 ///
-/// IMPORTANT: YouTube API Key Configuration
-/// =========================================
-/// The API key below requires the YouTube Data API v3 to be enabled in
-/// Google Cloud Console (https://console.cloud.google.com/apis/library)
+/// SECURITY: All API keys are stored server-side in Cloudflare Worker secrets.
+/// This service proxies requests through the Cloudflare Worker to keep keys secure.
 ///
-/// Common 403 error causes:
-/// 1. API not enabled: Enable "YouTube Data API v3" in Google Cloud Console
-/// 2. Invalid API key: Generate a new key in Google Cloud Console > Credentials
-/// 3. API key restrictions: Check Application/API restrictions in key settings
-/// 4. Quota exceeded: Monitor usage at Google Cloud Console > APIs & Services > Quotas
+/// Supported platforms:
+/// - YouTube (via Cloudflare Worker proxy)
+/// - Vimeo (via Cloudflare Worker proxy)
+/// - Deezer (public API, no auth required)
+/// - Dailymotion (public API, no auth required)
 ///
-/// CURRENT ISSUE: "Requests from this Android client application are blocked"
-/// ---------------------------------------------------------------------------
-/// This error means your API key has "Application restrictions" enabled.
-///
-/// FIX: Remove Application Restrictions
-/// 1. Go to: https://console.cloud.google.com/apis/credentials
-/// 2. Click on your API key
-/// 3. Under "Application restrictions", select "None"
-/// 4. Click "Save"
-///
-/// OR: Configure Android App Restrictions Properly
-/// 1. Under "Application restrictions", select "Android apps"
-/// 2. Click "Add an item"
-/// 3. Enter package name: com.firsttaps.firsttapsmv3d
-/// 4. Add your app's SHA-1 certificate fingerprint
-/// 5. Click "Save"
-///
-/// To get SHA-1 fingerprint:
-/// - Run: cd android && gradlew signingReport
-/// - Copy the SHA-1 from the output
-///
-/// To fix 403 errors:
-/// - Visit https://console.cloud.google.com/apis/library/youtube.googleapis.com
-/// - Click "Enable API" if not already enabled
-/// - Check API key restrictions under Credentials
-/// - Ensure the key has "YouTube Data API v3" enabled in API restrictions
+/// Worker URL: https://firsttaps-paste.firsttaps.workers.dev
 class MusicSearchService {
-  // YouTube Data API v3 configuration
-  static const String _youtubeApiKey =
-      'AIzaSyCCG_qmLjFhFbQ2YysRaFJF-g27qrd_qG8';
-  static const String _youtubeSearchUrl =
-      'https://www.googleapis.com/youtube/v3/search';
+  // Cloudflare Worker configuration (handles API keys server-side)
+  static const String _workerBaseUrl =
+      'https://firsttaps-paste.firsttaps.workers.dev';
   static const int _defaultMaxResults = 15;
 
   // Deezer API configuration (no API key required for basic search)
   static const String _deezerSearchUrl = 'https://api.deezer.com/search';
-
-  // Vimeo API configuration
-  static const String _vimeoApiKey =
-      '0fa39fb74f07bfe8453358466360d387'; // Vimeo personal access token
-  static const String _vimeoSearchUrl = 'https://api.vimeo.com/videos';
 
   // SoundCloud API configuration (public API - no auth required for search)
   static const String _soundcloudSearchUrl =
@@ -80,7 +45,7 @@ class MusicSearchService {
     );
   }
 
-  /// Search YouTube for music/video content
+  /// Search YouTube for music/video content via Cloudflare Worker proxy
   /// Returns list of search results or empty list on error
   Future<List<MusicSearchResult>> searchYouTube(
     String query, {
@@ -110,24 +75,17 @@ class MusicSearchService {
       }
 
       developer.log(
-        'Searching YouTube: "$query" (max: $maxResults)',
+        'Searching YouTube via Worker: "$query" (max: $maxResults)',
         name: 'MusicSearchService',
       );
 
-      // Build request URL
-      final uri = Uri.parse(_youtubeSearchUrl).replace(
-        queryParameters: {
-          'part': 'snippet',
-          'q': query,
-          'type': 'video',
-          'maxResults': maxResults.toString(),
-          'key': _youtubeApiKey,
-          'videoCategoryId': '10', // Music category
-          'order': 'relevance', // Most relevant results first
-        },
+      // Use Cloudflare Worker proxy (keeps API key secure on server)
+      // Worker endpoint: /api/youtube/music-audio
+      final uri = Uri.parse('$_workerBaseUrl/api/youtube/music-audio').replace(
+        queryParameters: {'q': query, 'maxResults': maxResults.toString()},
       );
 
-      // Make API request
+      // Make API request through proxy
       final response = await http.get(uri);
 
       // Consume quota after successful API call
@@ -305,8 +263,8 @@ class MusicSearchService {
     }
   }
 
-  /// Search Vimeo for videos
-  /// Requires Vimeo API access token
+  /// Search Vimeo for videos via Cloudflare Worker proxy
+  /// Worker handles API authentication securely
   Future<List<MusicSearchResult>> searchVimeo(
     String query, {
     int maxResults = _defaultMaxResults,
@@ -317,38 +275,19 @@ class MusicSearchService {
         return [];
       }
 
-      // Check if API key is configured
-      if (_vimeoApiKey == 'YOUR_VIMEO_ACCESS_TOKEN') {
-        developer.log(
-          'Vimeo API key not configured - skipping Vimeo search',
-          name: 'MusicSearchService',
-        );
-        return [];
-      }
-
       developer.log(
-        'Searching Vimeo: "$query" (max: $maxResults)',
+        'Searching Vimeo via Worker: "$query" (max: $maxResults)',
         name: 'MusicSearchService',
       );
 
-      // Build request URL
-      final uri = Uri.parse(_vimeoSearchUrl).replace(
-        queryParameters: {
-          'query': query,
-          'per_page': maxResults.toString(),
-          'fields':
-              'uri,name,link,description,duration,created_time,user.name,pictures',
-        },
+      // Use Cloudflare Worker proxy (keeps API token secure on server)
+      // Worker endpoint: /api/vimeo/staff-picks
+      final uri = Uri.parse('$_workerBaseUrl/api/vimeo/staff-picks').replace(
+        queryParameters: {'q': query, 'maxResults': maxResults.toString()},
       );
 
-      // Make API request with authorization header
-      final response = await http.get(
-        uri,
-        headers: {
-          'Authorization': 'Bearer $_vimeoApiKey',
-          'Accept': 'application/vnd.vimeo.*+json;version=3.4',
-        },
-      );
+      // Make API request through proxy
+      final response = await http.get(uri);
 
       if (response.statusCode != 200) {
         developer.log(
