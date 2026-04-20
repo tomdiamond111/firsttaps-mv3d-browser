@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>YouTube Mini-Player Test</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+            background: #1a1a1a;
+            color: #fff;
+        }
+        .test-section {
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        h2 {
+            color: #4CAF50;
+            margin-top: 0;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button.danger {
+            background: #f44336;
+        }
+        button.danger:hover {
+            background: #da190b;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+            background: #333;
+        }
+        .success { color: #4CAF50; }
+        .error { color: #f44336; }
+        .info { color: #2196F3; }
+        pre {
+            background: #1a1a1a;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+        }
+        .test-urls {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .test-urls input {
+            padding: 8px;
+            border-radius: 4px;
+            border: 1px solid #444;
+            background: #333;
+            color: #fff;
+            font-size: 12px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎵 YouTube Mini-Player Testing Suite</h1>
+    
+    <div class="test-section">
+        <h2>1. URL Parsing Tests</h2>
+        <p>Test video ID extraction from various YouTube URL formats</p>
+        <div class="test-urls">
+            <input type="text" id="url1" value="https://www.youtube.com/watch?v=dQw4w9WgXcQ" placeholder="YouTube URL">
+            <input type="text" id="url2" value="https://youtu.be/jNQXAC9IVRw" placeholder="Short URL">
+            <input type="text" id="url3" value="https://www.youtube.com/embed/9bZkp7q19f0" placeholder="Embed URL">
+        </div>
+        <button onclick="testUrlParsing()">Test URL Parsing</button>
+        <div id="urlResults" class="status"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>2. Playlist Loading</h2>
+        <p>Test loading a playlist of multiple tracks</p>
+        <button onclick="testPlaylist()">Load Test Playlist (3 tracks)</button>
+        <button onclick="testLargePlaylist()">Load Large Playlist (10 tracks)</button>
+        <div id="playlistResults" class="status"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>3. Playback Controls</h2>
+        <p>Test play/pause/next/previous functionality</p>
+        <button onclick="testPlay()">▶️ Play</button>
+        <button onclick="testPause()">⏸️ Pause</button>
+        <button onclick="testNext()">⏭️ Next</button>
+        <button onclick="testPrev()">⏮️ Previous</button>
+        <div id="controlResults" class="status"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>4. UI State Tests</h2>
+        <p>Test minimize/expand and visibility</p>
+        <button onclick="testMinimize()">Minimize</button>
+        <button onclick="testExpand()">Expand</button>
+        <button onclick="testToggle()">Toggle State</button>
+        <button class="danger" onclick="testClose()">Close Player</button>
+        <div id="uiResults" class="status"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>5. Status Inspector</h2>
+        <button onclick="inspectStatus()">🔍 Inspect Current State</button>
+        <div id="statusResults" class="status"></div>
+    </div>
+
+    <script>
+        // Test URL parsing
+        function testUrlParsing() {
+            const urls = [
+                document.getElementById('url1').value,
+                document.getElementById('url2').value,
+                document.getElementById('url3').value
+            ];
+            
+            const results = document.getElementById('urlResults');
+            results.innerHTML = '<h3>Results:</h3>';
+            
+            urls.forEach((url, index) => {
+                const videoId = extractYouTubeVideoId(url);
+                const status = videoId ? 
+                    `<span class="success">✓ URL ${index + 1}: ${videoId}</span>` :
+                    `<span class="error">✗ URL ${index + 1}: Failed to extract</span>`;
+                results.innerHTML += `<div>${status}</div>`;
+            });
+        }
+
+        // Helper: Extract video ID (same logic as implementation)
+        function extractYouTubeVideoId(url) {
+            if (!url) return null;
+            const patterns = [
+                /(?:youtube\.com\/watch\?v=)([^&]+)/,
+                /(?:youtu\.be\/)([^?]+)/,
+                /(?:youtube\.com\/embed\/)([^?]+)/
+            ];
+            for (const pattern of patterns) {
+                const match = url.match(pattern);
+                if (match && match[1]) return match[1];
+            }
+            return null;
+        }
+
+        // Test playlist loading
+        function testPlaylist() {
+            const playlist = [
+                {videoId: 'dQw4w9WgXcQ', title: 'Rick Astley - Never Gonna Give You Up'},
+                {videoId: 'jNQXAC9IVRw', title: 'Me at the zoo'},
+                {videoId: '9bZkp7q19f0', title: 'PSY - GANGNAM STYLE'}
+            ];
+            
+            if (window.app && window.app.youtubePlayer) {
+                window.app.youtubePlayer.playPlaylist(playlist, 'test', 'test-playlist-1');
+                document.getElementById('playlistResults').innerHTML = 
+                    '<span class="success">✓ Test playlist loaded (3 tracks)</span>';
+            } else {
+                document.getElementById('playlistResults').innerHTML = 
+                    '<span class="error">✗ YouTube Player not available</span>';
+            }
+        }
+
+        function testLargePlaylist() {
+            const playlist = [];
+            const sampleIds = ['dQw4w9WgXcQ', 'jNQXAC9IVRw', '9bZkp7q19f0', 'kJQP7kiw5Fk', 'fJ9rUzIMcZQ'];
+            
+            for (let i = 0; i < 10; i++) {
+                playlist.push({
+                    videoId: sampleIds[i % sampleIds.length],
+                    title: `Test Track ${i + 1}`
+                });
+            }
+            
+            if (window.app && window.app.youtubePlayer) {
+                window.app.youtubePlayer.playPlaylist(playlist, 'test', 'large-playlist');
+                document.getElementById('playlistResults').innerHTML = 
+                    '<span class="success">✓ Large playlist loaded (10 tracks)</span>';
+            } else {
+                document.getElementById('playlistResults').innerHTML = 
+                    '<span class="error">✗ YouTube Player not available</span>';
+            }
+        }
+
+        // Playback control tests
+        function testPlay() {
+            if (window.app?.youtubePlayer?.player) {
+                window.app.youtubePlayer.player.playVideo();
+                document.getElementById('controlResults').innerHTML = 
+                    '<span class="success">✓ Play command sent</span>';
+            } else {
+                document.getElementById('controlResults').innerHTML = 
+                    '<span class="error">✗ No active player</span>';
+            }
+        }
+
+        function testPause() {
+            if (window.app?.youtubePlayer?.player) {
+                window.app.youtubePlayer.player.pauseVideo();
+                document.getElementById('controlResults').innerHTML = 
+                    '<span class="success">✓ Pause command sent</span>';
+            } else {
+                document.getElementById('controlResults').innerHTML = 
+                    '<span class="error">✗ No active player</span>';
+            }
+        }
+
+        function testNext() {
+            if (window.app?.youtubePlayer) {
+                window.app.youtubePlayer.playNext();
+                document.getElementById('controlResults').innerHTML = 
+                    '<span class="success">✓ Next track</span>';
+            } else {
+                document.getElementById('controlResults').innerHTML = 
+                    '<span class="error">✗ Player not available</span>';
+            }
+        }
+
+        function testPrev() {
+            if (window.app?.youtubePlayer) {
+                window.app.youtubePlayer.playPrevious();
+                document.getElementById('controlResults').innerHTML = 
+                    '<span class="success">✓ Previous track</span>';
+            } else {
+                document.getElementById('controlResults').innerHTML = 
+                    '<span class="error">✗ Player not available</span>';
+            }
+        }
+
+        // UI state tests
+        function testMinimize() {
+            const player = document.getElementById('youtube-mini-player');
+            if (player) {
+                player.classList.remove('expanded');
+                document.getElementById('uiResults').innerHTML = 
+                    '<span class="success">✓ Player minimized</span>';
+            } else {
+                document.getElementById('uiResults').innerHTML = 
+                    '<span class="error">✗ Player not found</span>';
+            }
+        }
+
+        function testExpand() {
+            const player = document.getElementById('youtube-mini-player');
+            if (player) {
+                player.classList.add('expanded');
+                document.getElementById('uiResults').innerHTML = 
+                    '<span class="success">✓ Player expanded</span>';
+            } else {
+                document.getElementById('uiResults').innerHTML = 
+                    '<span class="error">✗ Player not found</span>';
+            }
+        }
+
+        function testToggle() {
+            if (window.app?.youtubePlayer) {
+                window.app.youtubePlayer.toggleExpand();
+                document.getElementById('uiResults').innerHTML = 
+                    '<span class="success">✓ State toggled</span>';
+            } else {
+                document.getElementById('uiResults').innerHTML = 
+                    '<span class="error">✗ Player not available</span>';
+            }
+        }
+
+        function testClose() {
+            if (window.app?.youtubePlayer) {
+                window.app.youtubePlayer.close();
+                document.getElementById('uiResults').innerHTML = 
+                    '<span class="info">ℹ️ Player closed</span>';
+            } else {
+                document.getElementById('uiResults').innerHTML = 
+                    '<span class="error">✗ Player not available</span>';
+            }
+        }
+
+        // Status inspection
+        function inspectStatus() {
+            const results = document.getElementById('statusResults');
+            
+            if (!window.app?.youtubePlayer) {
+                results.innerHTML = '<span class="error">✗ YouTube Player not initialized</span>';
+                return;
+            }
+            
+            const player = window.app.youtubePlayer;
+            const status = {
+                'Player Initialized': !!player.player,
+                'Playlist Loaded': player.playlist.length > 0,
+                'Current Track': player.currentTrackIndex + 1,
+                'Total Tracks': player.playlist.length,
+                'Playing From': player.currentSource || 'none',
+                'Is Expanded': player.isExpanded,
+                'Player Visible': !!document.getElementById('youtube-mini-player')
+            };
+            
+            let html = '<h3>Current State:</h3><pre>';
+            for (const [key, value] of Object.entries(status)) {
+                html += `${key}: ${JSON.stringify(value, null, 2)}\n`;
+            }
+            html += '</pre>';
+            
+            results.innerHTML = html;
+        }
+
+        // Auto-inspect on load
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                const status = document.getElementById('statusResults');
+                if (window.app?.youtubePlayer) {
+                    status.innerHTML = '<span class="success">✓ YouTube Player Manager detected</span>';
+                } else {
+                    status.innerHTML = '<span class="error">✗ YouTube Player Manager not found. Load main app first.</span>';
+                }
+            }, 1000);
+        });
+    </script>
+</body>
+</html>
